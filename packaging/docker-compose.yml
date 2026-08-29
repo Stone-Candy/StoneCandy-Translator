@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  # CPU 版本
+  manga-translator-cpu:
+    build:
+      context: ..
+      dockerfile: packaging/Dockerfile
+      args:
+        BUILD_TYPE: cpu
+    image: manga-translator:cpu
+    container_name: manga-translator-cpu
+    ports:
+      - "8000:8000"
+    environment:
+      - MT_WEB_HOST=0.0.0.0
+      - MT_WEB_PORT=8000
+      - MT_USE_GPU=false
+      - MT_MODELS_TTL=300
+      - MT_RETRY_ATTEMPTS=-1
+      - MT_VERBOSE=false
+      # 设置管理员密码（首次启动）
+      - MANGA_TRANSLATOR_ADMIN_PASSWORD=admin123456
+    volumes:
+      # 持久化数据
+      - ./data/fonts:/app/fonts
+      - ./data/dict:/app/dict
+      - ./data/result:/app/result
+      - ./data/models:/app/models
+      - ./data/logs:/app/logs
+      - ./data/server:/app/manga_translator/server/data
+      # 配置文件
+      - ./data/config:/app/examples
+      # 如果要让 Web 管理界面里保存的服务器 API Keys 在重建容器后保留，
+      # 请先创建空文件 ./data/app.env ，再取消下面这行注释：
+      # - ./data/app.env:/app/.env
+    # 内存限制配置（根据实际服务器内存调整）
+    deploy:
+      resources:
+        limits:
+          memory: 8G  # 最大内存限制，根据服务器配置调整（建议 4G-16G）
+        reservations:
+          memory: 2G  # 预留内存
+    # 添加交换空间限制（防止无限使用交换导致系统卡死）
+    mem_swappiness: 60
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # GPU 版本
+  manga-translator-gpu:
+    build:
+      context: ..
+      dockerfile: packaging/Dockerfile
+      args:
+        BUILD_TYPE: gpu
+        CUDA_VERSION: 12.1.0
+    image: manga-translator:gpu
+    container_name: manga-translator-gpu
+    ports:
+      - "8001:8000"
+    environment:
+      - MT_WEB_HOST=0.0.0.0
+      - MT_WEB_PORT=8000
+      - MT_USE_GPU=true
+      - MT_MODELS_TTL=300
+      - MT_RETRY_ATTEMPTS=-1
+      - MT_VERBOSE=false
+      # 设置管理员密码（首次启动）
+      - MANGA_TRANSLATOR_ADMIN_PASSWORD=admin123456
+    volumes:
+      # 持久化数据
+      - ./data/fonts:/app/fonts
+      - ./data/dict:/app/dict
+      - ./data/result:/app/result
+      - ./data/models:/app/models
+      - ./data/logs:/app/logs
+      - ./data/server:/app/manga_translator/server/data
+      # 配置文件
+      - ./data/config:/app/examples
+      # 如果要让 Web 管理界面里保存的服务器 API Keys 在重建容器后保留，
+      # 请先创建空文件 ./data/app.env ，再取消下面这行注释：
+      # - ./data/app.env:/app/.env
+    deploy:
+      resources:
+        limits:
+          memory: 16G  # GPU 版本需要更多内存，根据服务器配置调整（建议 8G-32G）
+        reservations:
+          memory: 4G
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # 添加交换空间限制
+    mem_swappiness: 60
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

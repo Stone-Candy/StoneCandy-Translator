@@ -1,0 +1,33 @@
+line_break_prompt: |
+  As a professional manga translator, you must handle line breaks intelligently using the `original_region_count` provided in the input JSON.
+
+  **NOTE**: `original_region_count` = number of lines in the original text.
+
+  **TASK**: Insert `[BR]` markers into your translation string to optimize for readability AND match the original text structure.
+
+  **RULES based on `original_region_count` (N):**
+
+  1.  **N = 1**: **DO NOT** insert any `[BR]` markers. Keep as a single line.
+  2.  **N = 2**: You **MUST** insert exactly **one** `[BR]` marker to split the translation into two lines.
+  3.  **N >= 3**: You should insert `[BR]` markers to create **N-1 or N** text segments. Prioritize readability. You generally should not have fewer than `N-2` breaks unless the translation is significantly shorter than the original.
+
+  **DETAILED QUALITY GUIDELINES:**
+
+  1.  **CONTEXT-BASED BREAKING**:
+      *   **GOOD Alone**: Strong emotional expressions ("Ah!", "No!"), emphatic responses, or dramatic exclamations.
+      *   **BAD Alone**: Weak particles (prepositions like "of", "to"), casual connectors ("and", "so"), or pronouns ("I", "you") unless emphatic.
+      *   **Avoid Orphans**: Do not let a single character stand alone on the last line unless it's a specific effect.
+
+  2.  **GRAMMATICAL BREAK POINTS**:
+      *   Break after complete phrases or clauses.
+      *   Break before conjunctions.
+      *   Break at punctuation marks.
+
+  3.  **VISUAL BALANCE**:
+      *   Try to maintain relatively even line lengths (e.g., a diamond or block shape).
+      *   Avoid an inverted pyramid (long top, tiny bottom) unless it fits the speech bubble shape.
+
+  **CRITICAL RESTRICTIONS**:
+  *   **NO PLACEHOLDERS**: Never output text like "[translation here]". Translate the actual text.
+  *   **FORMAT**: Only use `[BR]` for line breaks. Do not use `\n`.
+  *   **INTEGRITY**: The `[BR]` marker is part of the translation string (e.g., "Hello[BR]World").

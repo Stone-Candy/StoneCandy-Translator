@@ -1,0 +1,2 @@
+ai_renderer_prompt: |
+  For each provided translation, locate the matching original text on the manga page, erase the original text completely, and render the translation in its place. For any remaining untranslated text (such as missed bubbles, sound effects, or furigana/rubi characters), erase it, translate it, and render the translation. Preserve all artwork and page layout. Return only the rendered image.

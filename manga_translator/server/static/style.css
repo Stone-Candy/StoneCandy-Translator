@@ -1,0 +1,1469 @@
+/* Global Reset */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+    background-color: #F5F7FA;
+    color: #2C3E50;
+    font-size: 14px;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Layout */
+.app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.app-header {
+    background-color: #FFFFFF;
+    border-bottom: 1px solid #E0E0E0;
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 50px;
+}
+
+.app-header h1 {
+    font-size: 18px;
+    color: #2196F3;
+    margin: 0;
+}
+
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.admin-link {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.admin-link:hover {
+    background-color: #e3f2fd;
+    color: #1976D2 !important;
+    transform: translateY(-1px);
+}
+
+.language-select {
+    padding: 4px 8px;
+    border: 1px solid #CFD8DC;
+    border-radius: 4px;
+    font-size: 13px;
+    background-color: #FFFFFF;
+    cursor: pointer;
+}
+
+.main-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* Left Panel */
+.left-panel {
+    width: 320px;
+    min-width: 300px;
+    background-color: #F5F7FA;
+    border-right: 1px solid #E0E0E0;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    overflow-y: auto;
+}
+
+.panel-section {
+    background-color: #FFFFFF;
+    border: 1px solid #E0E0E0;
+    border-radius: 6px;
+    padding: 12px;
+}
+
+.panel-section h3 {
+    font-size: 14px;
+    color: #2196F3;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.section-header h3 {
+    margin-bottom: 0;
+}
+
+/* Right Panel */
+.right-panel {
+    flex: 1;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    overflow: hidden;
+    background-color: #F5F7FA;
+}
+
+/* Settings Area */
+.settings-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #FFFFFF;
+    border: 1px solid #E0E0E0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.tabs {
+    display: flex;
+    background-color: #ECEFF1;
+    border-bottom: 1px solid #E0E0E0;
+}
+
+.tab-btn {
+    padding: 10px 20px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-weight: 500;
+    color: #546E7A;
+    border-right: 1px solid #E0E0E0;
+}
+
+.tab-btn:hover {
+    background-color: #CFD8DC;
+}
+
+.tab-btn.active {
+    background-color: #FFFFFF;
+    color: #2196F3;
+    border-bottom: 2px solid #2196F3;
+    margin-bottom: -1px;
+}
+
+.tab-content-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+}
+
+.tab-pane {
+    display: none;
+}
+
+.tab-pane.active {
+    display: block;
+}
+
+.settings-split {
+    display: flex;
+    gap: 20px;
+}
+
+.settings-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+/* Forms & Inputs */
+.form-group {
+    margin-bottom: 10px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: #546E7A;
+    font-weight: 500;
+}
+
+input[type="text"],
+input[type="number"],
+select {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid #CFD8DC;
+    border-radius: 4px;
+    font-size: 13px;
+    background-color: #FFFFFF;
+}
+
+input:focus,
+select:focus {
+    border-color: #2196F3;
+    outline: none;
+}
+
+/* Buttons */
+button {
+    cursor: pointer;
+    font-family: inherit;
+    transition: background-color 0.2s;
+}
+
+.primary-btn {
+    background-color: #2196F3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-weight: 500;
+}
+
+.primary-btn:hover {
+    background-color: #1976D2;
+}
+
+.primary-btn:disabled {
+    background-color: #BDBDBD;
+    cursor: not-allowed;
+}
+
+.secondary-btn {
+    background-color: #ECEFF1;
+    color: #546E7A;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.secondary-btn:hover {
+    background-color: #CFD8DC;
+}
+
+.large-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+}
+
+.icon-btn {
+    background: none;
+    border: none;
+    font-size: 16px;
+    padding: 4px;
+}
+
+.button-group {
+    display: flex;
+    gap: 8px;
+}
+
+/* File List */
+.file-list-container {
+    height: 200px;
+    border: 1px solid #E0E0E0;
+    border-radius: 4px;
+    overflow-y: auto;
+    background-color: #FFFFFF;
+}
+
+.file-list {
+    list-style: none;
+}
+
+.file-list li {
+    padding: 8px 10px;
+    border-bottom: 1px solid #F5F5F5;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.file-list li:hover {
+    background-color: #F5F7FA;
+}
+
+.file-list li .remove-btn {
+    color: #EF5350;
+    cursor: pointer;
+    margin-left: 10px;
+}
+
+/* Log Box */
+.log-container {
+    height: 200px;
+    background-color: #FFFFFF;
+    border: 1px solid #E0E0E0;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+}
+
+.log-header {
+    padding: 8px 15px;
+    border-bottom: 1px solid #E0E0E0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.log-header h3 {
+    font-size: 14px;
+    color: #546E7A;
+    margin: 0;
+}
+
+.log-box {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 12px;
+    color: #333;
+    white-space: pre-wrap;
+}
+
+.log-entry {
+    margin-bottom: 2px;
+}
+
+.log-entry.error {
+    color: #D32F2F;
+}
+
+.log-entry.info {
+    color: #1976D2;
+}
+
+/* Utilities */
+.hint {
+    display: block;
+    margin-top: 5px;
+    color: #90A4AE;
+    font-size: 12px;
+}
+
+.full-width-select {
+    width: 100%;
+}
+
+/* Checkbox wrapper */
+.checkbox-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.checkbox-wrapper input[type="checkbox"] {
+    width: auto;
+}
+
+.checkbox-wrapper label {
+    margin-bottom: 0;
+}
+
+/* API Keys / Env Editor */
+.env-editor-container {
+    padding: 20px;
+}
+
+.env-hint {
+    color: #90A4AE;
+    font-size: 14px;
+    margin-bottom: 20px;
+    padding: 10px;
+    background: #F5F5F5;
+    border-radius: 4px;
+}
+
+.env-merge-summary {
+    display: grid;
+    gap: 6px;
+}
+
+#env-inputs-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 980px;
+}
+
+#env-inputs-container .form-group {
+    margin-bottom: 0;
+}
+
+.env-category-title {
+    margin: 0 0 10px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #78909C;
+}
+
+.env-group-card {
+    padding: 16px;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #FAFCFF 0%, #F3F7FB 100%);
+}
+
+.env-group-title {
+    margin: 0 0 12px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #263238;
+}
+
+.env-group-note {
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: #607D8B;
+}
+
+.env-group-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.env-field-source {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #607D8B;
+    line-height: 1.4;
+}
+
+.env-save-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.env-save-hint {
+    font-size: 12px;
+    color: #607D8B;
+}
+
+/* Upload Sections */
+.upload-section {
+    margin-top: 20px;
+    padding: 15px;
+    background: #F5F5F5;
+    border-radius: 4px;
+}
+
+.upload-section h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.upload-area {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.upload-hint {
+    margin: 0;
+    font-size: 12px;
+    color: #666;
+}
+
+/* Results Section */
+.results-section {
+    max-height: 400px;
+    display: flex;
+    flex-direction: column;
+}
+
+.results-list-container {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 100px;
+    max-height: 300px;
+}
+
+.results-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.results-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-bottom: 1px solid #E0E0E0;
+    gap: 10px;
+}
+
+.results-list li:hover {
+    background: #F5F5F5;
+}
+
+.result-info {
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.result-name {
+    font-size: 13px;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.result-time {
+    font-size: 11px;
+    color: #999;
+}
+
+.result-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.result-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    background: #2196F3;
+    color: white;
+}
+
+.result-btn:hover {
+    background: #1976D2;
+}
+
+.empty-hint {
+    text-align: center;
+    color: #999;
+    padding: 20px;
+    font-size: 13px;
+}
+
+/* Results Section */
+.results-section {
+    margin-top: 15px;
+}
+
+.results-list-container {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #E0E0E0;
+    border-radius: 4px;
+    background-color: #FAFAFA;
+}
+
+.results-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.result-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #E0E0E0;
+    background-color: #FFFFFF;
+    transition: background-color 0.2s;
+}
+
+.result-item:hover {
+    background-color: #F5F5F5;
+}
+
+.result-item:last-child {
+    border-bottom: none;
+}
+
+.result-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.result-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.result-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: #2C3E50;
+}
+
+.result-time {
+    font-size: 11px;
+    color: #999;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.result-actions {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+.result-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    border: 1px solid #CFD8DC;
+    border-radius: 3px;
+    background-color: #FFFFFF;
+    color: #2196F3;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.result-btn:hover {
+    background-color: #2196F3;
+    color: #FFFFFF;
+    border-color: #2196F3;
+}
+
+.result-btn.delete-btn {
+    color: #F44336;
+    border-color: #F44336;
+    padding: 4px 8px;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.result-btn.delete-btn:hover {
+    background-color: #F44336;
+    color: #FFFFFF;
+}
+
+.empty-hint {
+    padding: 20px;
+    text-align: center;
+    color: #999;
+    font-size: 13px;
+}
+
+/* Scrollbar styling for results list */
+.results-list-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.results-list-container::-webkit-scrollbar-track {
+    background: #F5F5F5;
+}
+
+.results-list-container::-webkit-scrollbar-thumb {
+    background: #CFD8DC;
+    border-radius: 4px;
+}
+
+.results-list-container::-webkit-scrollbar-thumb:hover {
+    background: #B0BEC5;
+}
+
+/* Image Viewer Modal */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 8px;
+    max-width: 95%;
+    max-height: 95%;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.image-viewer-content {
+    width: 90vw;
+    height: 90vh;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    border-bottom: 1px solid #E0E0E0;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 18px;
+    color: #2196F3;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 32px;
+    color: #999;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+}
+
+.close-btn:hover {
+    color: #F44336;
+}
+
+.image-viewer-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.thumbnails-panel {
+    width: 250px;
+    border-right: 1px solid #E0E0E0;
+    overflow-y: auto;
+    background: #F5F5F5;
+}
+
+#thumbnails-container {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.thumbnail-item {
+    position: relative;
+    cursor: pointer;
+    border: 2px solid transparent;
+    border-radius: 4px;
+    overflow: hidden;
+    background: white;
+    transition: all 0.2s;
+}
+
+.thumbnail-item:hover {
+    border-color: #2196F3;
+    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+}
+
+.thumbnail-item.active {
+    border-color: #2196F3;
+    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.5);
+}
+
+.thumbnail-item img {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    display: block;
+}
+
+.thumbnail-item .thumbnail-name {
+    padding: 8px;
+    font-size: 12px;
+    color: #333;
+    background: white;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.thumbnail-item .thumbnail-icon {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+.preview-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#preview-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    background: #2C3E50;
+    position: relative;
+}
+
+#preview-container img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.preview-placeholder {
+    color: #999;
+    font-size: 16px;
+    text-align: center;
+}
+
+.preview-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    border-top: 1px solid #E0E0E0;
+    background: white;
+}
+
+#preview-filename {
+    font-size: 14px;
+    color: #333;
+    font-weight: 500;
+}
+
+.preview-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* Scrollbar for thumbnails */
+.thumbnails-panel::-webkit-scrollbar {
+    width: 8px;
+}
+
+.thumbnails-panel::-webkit-scrollbar-track {
+    background: #F5F5F5;
+}
+
+.thumbnails-panel::-webkit-scrollbar-thumb {
+    background: #CFD8DC;
+    border-radius: 4px;
+}
+
+.thumbnails-panel::-webkit-scrollbar-thumb:hover {
+    background: #B0BEC5;
+}
+
+/* Preview container scrollbar */
+#preview-container::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+#preview-container::-webkit-scrollbar-track {
+    background: #1a252f;
+}
+
+#preview-container::-webkit-scrollbar-thumb {
+    background: #455A64;
+    border-radius: 5px;
+}
+
+#preview-container::-webkit-scrollbar-thumb:hover {
+    background: #546E7A;
+}
+
+
+/* ========== 移动端基础组件 ========== */
+
+/* 移动端设置按钮 - 打开设置面板 */
+.mobile-menu-btn {
+    display: none;
+    background: #2196F3;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 8px;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    color: #FFFFFF;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+    margin-left: auto;
+}
+
+.mobile-menu-btn:hover {
+    background-color: #1976D2;
+}
+
+.mobile-menu-btn:active {
+    background-color: #1565C0;
+}
+
+/* 移动端遮罩层 */
+.mobile-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.mobile-overlay.active {
+    display: block;
+    opacity: 1;
+}
+
+
+/* ========== 移动端媒体查询 (< 768px) ========== */
+@media (max-width: 767px) {
+    /* ----- 全局样式 ----- */
+    body {
+        overflow: auto;  /* 允许页面滚动 */
+        height: auto;
+    }
+    
+    .app-container {
+        height: auto;
+        min-height: 100vh;
+    }
+    
+    /* ----- Header 适配 (3.1) ----- */
+    .app-header {
+        padding: 8px 12px;
+        height: auto;
+        min-height: 50px;
+        flex-wrap: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background: #FFFFFF;
+    }
+    
+    .app-header h1 {
+        font-size: 16px;
+        flex: 1;
+        margin-right: 10px;
+    }
+    
+    .header-controls {
+        gap: 6px;
+        flex-shrink: 0;
+        align-items: center;
+    }
+    
+    .header-controls .secondary-btn {
+        padding: 6px 10px;
+        font-size: 12px;
+        min-height: 36px;
+    }
+    
+    /* 移动端隐藏用户信息，简化界面 */
+    #user-info {
+        display: none !important;
+    }
+    
+    #logout-btn {
+        padding: 6px 8px;
+        font-size: 11px;
+    }
+    
+    .admin-link {
+        padding: 6px 8px;
+    }
+    
+    #admin-link-text {
+        display: none;  /* 移动端只显示图标 */
+    }
+    
+    .language-select {
+        padding: 6px;
+        font-size: 12px;
+        max-width: 70px;
+    }
+    
+    /* 移动端设置按钮显示在header右侧 */
+    .mobile-menu-btn {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        margin-left: 8px;
+    }
+    
+    /* ----- 主内容区垂直布局 (3.2) ----- */
+    .main-content {
+        flex-direction: column;
+        height: auto;
+        overflow: visible;
+        min-height: calc(100vh - 50px);
+    }
+    
+    /* ----- 左侧面板（文件操作）显示在主页面 ----- */
+    .left-panel {
+        position: relative;
+        left: 0;
+        width: 100%;
+        min-width: 100%;
+        padding: 10px;
+        background: #F5F7FA;
+        border-right: none;
+        border-bottom: 1px solid #E0E0E0;
+        overflow: visible;
+        order: 1;
+    }
+    
+    /* ----- 右侧面板（设置）做成抽屉式 (3.3) ----- */
+    .right-panel {
+        position: fixed;
+        right: -100%;
+        top: 50px;
+        height: calc(100vh - 50px);
+        width: 90%;
+        max-width: 400px;
+        z-index: 1000;
+        transition: right 0.3s ease;
+        background: #F5F7FA;
+        box-shadow: -2px 0 10px rgba(0,0,0,0.2);
+        overflow-y: auto;
+        padding: 15px;
+        order: 2;
+    }
+    
+    .right-panel.open {
+        right: 0;
+    }
+    
+    /* ----- 面板区块 ----- */
+    .panel-section {
+        padding: 12px;
+        margin-bottom: 10px;
+    }
+    
+    .section-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .section-header .button-group {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+    
+    /* ----- 按钮触摸优化 (3.5) ----- */
+    .primary-btn, .secondary-btn {
+        min-height: 44px;
+        padding: 12px 16px;
+        font-size: 14px;
+    }
+    
+    .large-btn {
+        padding: 14px;
+        font-size: 16px;
+        width: 100%;
+    }
+    
+    .button-group {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .button-group .secondary-btn {
+        flex: 1;
+        min-width: 80px;
+        text-align: center;
+    }
+    
+    /* ----- 输入框防缩放 (3.6) ----- */
+    input[type="text"],
+    input[type="number"],
+    input[type="password"],
+    select,
+    textarea {
+        font-size: 16px;  /* 防止iOS缩放 */
+        min-height: 44px;
+        width: 100%;
+    }
+    
+    /* ----- 文件列表容器高度调整 (3.7) ----- */
+    .file-list-container {
+        height: 150px;
+    }
+    
+    .file-list li {
+        padding: 10px;
+        font-size: 12px;
+    }
+    
+    /* ----- 设置容器移动端优化 ----- */
+    .settings-container {
+        flex: none;
+        max-height: none;
+        overflow: visible;
+    }
+    
+    /* ----- 标签页水平滚动 (3.8) ----- */
+    .tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+        padding: 0;
+        gap: 0;
+    }
+    
+    .tab-btn {
+        flex-shrink: 0;
+        padding: 12px 16px;
+        font-size: 13px;
+        min-height: 44px;
+        white-space: nowrap;
+    }
+    
+    .tab-content-area {
+        padding: 15px 10px;
+        overflow: visible;
+    }
+    
+    /* ----- 设置区域单列布局 (3.9) ----- */
+    .settings-split {
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .settings-column {
+        width: 100%;
+    }
+    
+    /* ----- 表单组优化 ----- */
+    .form-group {
+        margin-bottom: 16px;
+    }
+    
+    .form-group label {
+        font-size: 14px;
+        margin-bottom: 8px;
+        display: block;
+        font-weight: 500;
+    }
+    
+    .checkbox-wrapper {
+        min-height: 44px;
+        padding: 10px 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .checkbox-wrapper input[type="checkbox"] {
+        width: 22px;
+        height: 22px;
+        flex-shrink: 0;
+    }
+    
+    .checkbox-wrapper label {
+        margin-bottom: 0;
+        flex: 1;
+    }
+    
+    /* ----- 工作流选择 ----- */
+    .workflow-section select {
+        min-height: 44px;
+        font-size: 14px;
+    }
+    
+    /* ----- 日志容器适配 (3.10) ----- */
+    .log-container {
+        height: auto;
+        min-height: 120px;
+        max-height: 200px;
+    }
+    
+    .log-header {
+        padding: 10px 12px;
+    }
+    
+    .log-box {
+        font-size: 12px;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        padding: 10px;
+        max-height: 150px;
+    }
+    
+    .log-entry {
+        word-break: break-all;
+    }
+    
+    /* ----- 结果列表容器高度调整 (3.11) ----- */
+    .results-section {
+        max-height: none;
+    }
+    
+    .results-list-container {
+        max-height: 200px;
+    }
+    
+    .result-item {
+        padding: 12px 10px;
+    }
+    
+    .result-actions {
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .result-btn {
+        min-height: 36px;
+        padding: 8px 12px;
+    }
+    
+    /* ----- 历史区域 ----- */
+    .history-section .section-header {
+        flex-direction: row;
+        align-items: center;
+    }
+    
+    .history-list-container {
+        max-height: 120px;
+    }
+    
+    /* ----- 配置导入导出 ----- */
+    .config-io-section .button-group {
+        flex-direction: column;
+    }
+    
+    .config-io-section .secondary-btn {
+        width: 100%;
+    }
+    
+    /* ----- 上传区域优化 ----- */
+    .upload-section {
+        padding: 12px;
+        margin-top: 15px;
+    }
+    
+    .upload-section h4 {
+        font-size: 14px;
+        margin-bottom: 10px;
+    }
+    
+    .upload-area {
+        text-align: center;
+    }
+    
+    /* ----- API密钥区域优化 ----- */
+    .env-editor-container {
+        padding: 10px;
+    }
+    
+    #env-inputs-container {
+        max-width: 100%;
+    }
+    
+    .env-hint {
+        font-size: 13px;
+        margin-bottom: 15px;
+    }
+    
+    /* ----- 图片查看器移动端样式 (3.12) ----- */
+    .modal {
+        padding: 0;
+    }
+    
+    .modal-content {
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 0;
+    }
+    
+    .image-viewer-content {
+        width: 100vw;
+        height: 100vh;
+    }
+    
+    .modal-header {
+        padding: 10px 15px;
+    }
+    
+    .modal-header h2 {
+        font-size: 16px;
+    }
+    
+    .close-btn {
+        width: 44px;
+        height: 44px;
+        font-size: 28px;
+    }
+    
+    .image-viewer-body {
+        flex-direction: column;
+    }
+    
+    /* 缩略图面板移至底部 */
+    .thumbnails-panel {
+        width: 100%;
+        height: 100px;
+        border-right: none;
+        border-top: 1px solid #E0E0E0;
+        order: 2;
+    }
+    
+    #thumbnails-container {
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 8px;
+        gap: 8px;
+    }
+    
+    .thumbnail-item {
+        flex-shrink: 0;
+        width: 80px;
+    }
+    
+    .thumbnail-item img {
+        height: 60px;
+    }
+    
+    .thumbnail-item .thumbnail-name {
+        padding: 4px;
+        font-size: 10px;
+    }
+    
+    .preview-panel {
+        order: 1;
+        height: calc(100vh - 160px);
+    }
+    
+    .preview-info {
+        padding: 10px 15px;
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    #preview-filename {
+        font-size: 12px;
+        text-align: center;
+    }
+    
+    /* ----- 用户登录弹窗 ----- */
+    .user-login-box {
+        width: 90%;
+        max-width: 350px;
+        padding: 24px;
+    }
+    
+    .user-login-box h2 {
+        font-size: 18px;
+    }
+    
+    .user-login-box input {
+        min-height: 44px;
+        font-size: 16px;
+    }
+}
+
+
+/* ========== 平板端媒体查询 (768px - 1024px) ========== */
+@media (min-width: 768px) and (max-width: 1024px) {
+    /* ----- 左侧面板宽度调整 (4.1) ----- */
+    .left-panel {
+        width: 280px;
+        min-width: 250px;
+    }
+    
+    /* ----- 设置区域布局调整 (4.2) ----- */
+    .settings-split {
+        flex-direction: column;
+    }
+    
+    .settings-column {
+        width: 100%;
+    }
+    
+    .tabs {
+        flex-wrap: wrap;
+    }
+    
+    .tab-btn {
+        padding: 10px 16px;
+        font-size: 13px;
+    }
+    
+    .tab-content-area {
+        padding: 12px;
+    }
+    
+    /* ----- 图片查看器尺寸调整 (4.3) ----- */
+    .image-viewer-content {
+        width: 95vw;
+        height: 95vh;
+    }
+    
+    .thumbnails-panel {
+        width: 200px;
+    }
+    
+    .thumbnail-item img {
+        height: 120px;
+    }
+    
+    .preview-info {
+        padding: 12px 15px;
+    }
+    
+    /* ----- 其他平板端优化 ----- */
+    .app-header h1 {
+        font-size: 17px;
+    }
+    
+    .header-controls {
+        gap: 8px;
+    }
+    
+    .form-group label {
+        font-size: 13px;
+    }
+    
+    .results-list-container {
+        max-height: 250px;
+    }
+}

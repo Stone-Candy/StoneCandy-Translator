@@ -1,0 +1,1780 @@
+# -*- coding: utf-8 -*-
+"""
+现代化文件夹选择器对话框
+支持多选、快捷栏、路径导航等功能
+"""
+
+import json
+import os
+from pathlib import Path
+from typing import List, Optional
+
+from ui.theme import apply_widget_stylesheet, get_current_theme_colors
+from PyQt6.QtCore import (
+    QDir,
+    QModelIndex,
+    QPoint,
+    QRect,
+    QSortFilterProxyModel,
+    Qt,
+)
+from PyQt6.QtGui import (
+    QColor,
+    QFileSystemModel,
+    QIcon,
+    QPainter,
+    QPen,
+    QStandardItem,
+    QStandardItemModel,
+)
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QDialog,
+    QFileIconProvider,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSplitter,
+    QStyle,
+    QStyledItemDelegate,
+    QToolButton,
+    QTreeView,
+    QVBoxLayout,
+    QWidget,
+)
+from services import get_i18n_manager
+from utils.resource_helper import resource_path
+from ui.widgets.hover_hint import set_hover_hint
+
+
+def _folder_dialog_tokens() -> dict[str, str]:
+    colors = get_current_theme_colors()
+    return {
+        **colors,
+        "dialog_bg": colors["bg_panel"],
+        "card_bg": colors["bg_surface_raised"],
+        "card_soft_bg": colors["bg_surface_soft"],
+        "toolbar_bg": colors["bg_toolbar"],
+        "toolbar_border": colors["bg_toolbar_border"],
+        "input_bg": colors["bg_input"],
+        "input_focus_bg": colors["bg_input_focus"],
+        "menu_bg": colors["bg_dropdown"],
+        "text": colors["text_primary"],
+        "text_title": colors["text_page_title"],
+        "text_muted": colors["text_muted"],
+        "text_selected": colors["list_item_selected_text"],
+        "border": colors["border_input"],
+        "border_hover": colors["border_input_hover"],
+        "border_focus": colors["border_input_focus"],
+        "panel_border": colors["border_card"],
+        "list_border": colors["border_list"],
+        "soft_bg": colors["btn_soft_bg"],
+        "soft_hover": colors["btn_soft_hover"],
+        "soft_pressed": colors["btn_soft_pressed"],
+        "soft_border": colors["btn_soft_border"],
+        "soft_text": colors["btn_soft_text"],
+        "primary_bg": colors["btn_primary_bg"],
+        "primary_hover": colors["btn_primary_hover"],
+        "primary_pressed": colors["btn_primary_pressed"],
+        "primary_border": colors["btn_primary_border"],
+        "primary_text": colors["btn_primary_text"],
+        "chip_bg": colors["btn_chip_bg"],
+        "chip_border": colors["btn_chip_border"],
+        "chip_hover": colors["btn_chip_hover"],
+        "hover_bg": colors["list_item_hover"],
+        "selection_bg": colors["dropdown_selection"],
+        "selection_text": colors["list_item_selected_text"],
+        "splitter": colors["splitter_handle"],
+        "splitter_hover": colors["splitter_handle_hover"],
+        "scroll_bg": colors["bg_scroll"],
+        "scroll_handle": colors["scroll_handle"],
+        "scroll_handle_hover": colors["scroll_handle_hover"],
+        "disabled_bg": colors["btn_disabled_bg"],
+        "disabled_border": colors["btn_disabled_border"],
+        "disabled_text": colors["text_disabled"],
+        "warning": colors["warning_color"],
+        "accent": colors["cta_gradient_start"],
+    }
+
+
+class CaseInsensitiveSortProxyModel(QSortFilterProxyModel):
+    """不区分大小写的排序代理模型"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.header_overrides = {}
+    
+    def lessThan(self, left: QModelIndex, right: QModelIndex) -> bool:
+        """自定义排序比较"""
+        left_data = self.sourceModel().data(left, Qt.ItemDataRole.DisplayRole)
+        right_data = self.sourceModel().data(right, Qt.ItemDataRole.DisplayRole)
+        
+        if left_data is None or right_data is None:
+            return False
+        
+        # 转换为小写进行比较
+        left_str = str(left_data).lower()
+        right_str = str(right_data).lower()
+        
+        return left_str < right_str
+
+    def set_header_override(self, section: int, text: str):
+        """设置表头显示文本覆盖"""
+        self.header_overrides[section] = text
+
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        """优先返回自定义表头，避免 QFileSystemModel 使用系统默认列名"""
+        if (
+            orientation == Qt.Orientation.Horizontal
+            and role == Qt.ItemDataRole.DisplayRole
+            and section in self.header_overrides
+        ):
+            return self.header_overrides[section]
+        return super().headerData(section, orientation, role)
+
+
+class FavoriteDelegate(QStyledItemDelegate):
+    """带收藏星星的自定义委托"""
+    
+    def __init__(self, parent=None, favorite_folders=None, fs_model=None, proxy_model=None):
+        super().__init__(parent)
+        self.favorite_folders = favorite_folders if favorite_folders is not None else []
+        self.fs_model = fs_model
+        self.proxy_model = proxy_model
+        self.star_size = 16  # 和图标一样大
+        self.star_margin = 4  # 星星和图标之间的间距
+        self.icon_size = 16  # 文件夹图标大小
+        
+    def paint(self, painter: QPainter, option, index: QModelIndex):
+        """绘制项目"""
+        # 先绘制默认内容
+        super().paint(painter, option, index)
+        
+        # 获取文件夹路径
+        if self.proxy_model and self.fs_model:
+            source_index = self.proxy_model.mapToSource(index)
+            folder_path = self.fs_model.filePath(source_index)
+        else:
+            return
+        
+        if not folder_path or not os.path.isdir(folder_path):
+            return
+        
+        # 检查是否收藏
+        is_favorited = folder_path in self.favorite_folders
+        is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        is_hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
+
+        # 仅在悬停/选中/已收藏时显示星标
+        if not (is_favorited or is_selected or is_hovered):
+            return
+
+        # 计算星星位置（放在行右侧，避免与文件夹图标和文本重叠）
+        star_rect = self.get_star_rect(option.rect)
+        
+        # 绘制星星
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        dialog = self.parent()
+        favorite_color = QColor("#ffc107")
+        outline_color = QColor("#c7cdd6")
+        if isinstance(dialog, FolderDialog):
+            favorite_color = QColor(dialog._favorite_star_color)
+            outline_color = QColor(dialog._border_hover_color if is_selected else dialog._border_color)
+        
+        if is_favorited:
+            # 实心星星（已收藏）
+            painter.setPen(QPen(favorite_color, 1))
+            painter.setBrush(favorite_color)
+        else:
+            # 空心星星（未收藏）
+            painter.setPen(QPen(outline_color, 1))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+        
+        # 绘制五角星
+        self.draw_star(painter, star_rect)
+        
+        painter.restore()
+    
+    def draw_star(self, painter: QPainter, rect: QRect):
+        """绘制五角星"""
+        from math import cos, pi, sin
+        
+        center_x = rect.center().x()
+        center_y = rect.center().y()
+        radius = min(rect.width(), rect.height()) / 2 - 1
+        
+        points = []
+        for i in range(10):
+            angle = pi / 2 + (2 * pi * i / 10)
+            r = radius if i % 2 == 0 else radius * 0.4
+            x = center_x + r * cos(angle)
+            y = center_y - r * sin(angle)
+            points.append(QPoint(int(x), int(y)))
+        
+        from PyQt6.QtGui import QPolygon
+        polygon = QPolygon(points)
+        painter.drawPolygon(polygon)
+    
+    def get_star_rect(self, item_rect: QRect) -> QRect:
+        """获取星星的绘制区域 - 在右侧"""
+        x = item_rect.right() - self.star_size - self.star_margin - 6
+        y = item_rect.top() + (item_rect.height() - self.star_size) // 2
+        return QRect(x, y, self.star_size, self.star_size)
+    
+    def initStyleOption(self, option, index):
+        """调整样式选项，为星星留出空间"""
+        super().initStyleOption(option, index)
+        # 不再偏移 rect，避免选中高亮被截断
+    
+    def editorEvent(self, event, model, option, index):
+        """处理鼠标点击事件"""
+        from PyQt6.QtCore import QEvent
+        from PyQt6.QtGui import QMouseEvent
+        
+        if event.type() == QEvent.Type.MouseButtonRelease:
+            if isinstance(event, QMouseEvent):
+                star_rect = self.get_star_rect(option.rect)
+                if star_rect.contains(event.pos()):
+                    # 点击了星星区域
+                    if self.proxy_model and self.fs_model:
+                        source_index = self.proxy_model.mapToSource(index)
+                        folder_path = self.fs_model.filePath(source_index)
+                        
+                        if folder_path and os.path.isdir(folder_path):
+                            # 切换收藏状态
+                            dialog = self.parent()
+                            if isinstance(dialog, FolderDialog):
+                                if folder_path in dialog.favorite_folders:
+                                    dialog._remove_favorite_by_path(folder_path)
+                                else:
+                                    dialog._add_favorite(folder_path)
+                            return True
+        
+        return super().editorEvent(event, model, option, index)
+
+
+class ShortcutFavoriteDelegate(QStyledItemDelegate):
+    """左侧快捷栏的收藏委托"""
+    
+    def __init__(self, parent=None, favorite_folders=None, shortcuts_model=None):
+        super().__init__(parent)
+        self.favorite_folders = favorite_folders if favorite_folders is not None else []
+        self.shortcuts_model = shortcuts_model
+        self.star_size = 16  # 和图标一样大
+        self.star_margin = 4  # 星星和图标之间的间距
+        self.icon_size = 16  # 图标大小
+        
+    def paint(self, painter: QPainter, option, index: QModelIndex):
+        """绘制项目"""
+        super().paint(painter, option, index)
+        
+        if not self.shortcuts_model:
+            return
+        
+        item = self.shortcuts_model.itemFromIndex(index)
+        if not item:
+            return
+        
+        folder_path = item.data(Qt.ItemDataRole.UserRole)
+        if not folder_path or not os.path.isdir(folder_path):
+            return
+        
+        is_favorited = folder_path in self.favorite_folders
+        is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        is_hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
+
+        if not (is_favorited or is_selected or is_hovered):
+            return
+
+        star_rect = self.get_star_rect(option.rect)
+        
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        dialog = self.parent()
+        favorite_color = QColor("#ffc107")
+        outline_color = QColor("#c7cdd6")
+        if isinstance(dialog, FolderDialog):
+            favorite_color = QColor(dialog._favorite_star_color)
+            outline_color = QColor(dialog._border_hover_color if is_selected else dialog._border_color)
+        
+        if is_favorited:
+            painter.setPen(QPen(favorite_color, 1))
+            painter.setBrush(favorite_color)
+        else:
+            painter.setPen(QPen(outline_color, 1))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+        
+        self.draw_star(painter, star_rect)
+        painter.restore()
+    
+    def draw_star(self, painter: QPainter, rect: QRect):
+        """绘制五角星"""
+        from math import cos, pi, sin
+        
+        center_x = rect.center().x()
+        center_y = rect.center().y()
+        radius = min(rect.width(), rect.height()) / 2 - 1
+        
+        points = []
+        for i in range(10):
+            angle = pi / 2 + (2 * pi * i / 10)
+            r = radius if i % 2 == 0 else radius * 0.4
+            x = center_x + r * cos(angle)
+            y = center_y - r * sin(angle)
+            points.append(QPoint(int(x), int(y)))
+        
+        from PyQt6.QtGui import QPolygon
+        polygon = QPolygon(points)
+        painter.drawPolygon(polygon)
+    
+    def get_star_rect(self, item_rect: QRect) -> QRect:
+        """获取星星的绘制区域 - 在右侧"""
+        x = item_rect.right() - self.star_size - self.star_margin - 6
+        y = item_rect.top() + (item_rect.height() - self.star_size) // 2
+        return QRect(x, y, self.star_size, self.star_size)
+    
+    def initStyleOption(self, option, index):
+        """调整样式选项，为星星留出空间"""
+        super().initStyleOption(option, index)
+        # 不再偏移 rect，避免选中高亮被截断
+    
+    def editorEvent(self, event, model, option, index):
+        """处理鼠标点击事件"""
+        from PyQt6.QtCore import QEvent
+        from PyQt6.QtGui import QMouseEvent
+        
+        if event.type() == QEvent.Type.MouseButtonRelease:
+            if isinstance(event, QMouseEvent):
+                star_rect = self.get_star_rect(option.rect)
+                if star_rect.contains(event.pos()):
+                    if not self.shortcuts_model:
+                        return False
+                    
+                    item = self.shortcuts_model.itemFromIndex(index)
+                    if not item:
+                        return False
+                    
+                    folder_path = item.data(Qt.ItemDataRole.UserRole)
+                    if folder_path and os.path.isdir(folder_path):
+                        dialog = self.parent()
+                        if isinstance(dialog, FolderDialog):
+                            if folder_path in dialog.favorite_folders:
+                                dialog._remove_favorite_by_path(folder_path)
+                            else:
+                                dialog._add_favorite(folder_path)
+                        return True
+        
+        return super().editorEvent(event, model, option, index)
+
+
+class FolderDialog(QDialog):
+    """现代化文件夹选择对话框"""
+
+    def __init__(self, parent=None, start_dir: str = "", multi_select: bool = True, config_service=None):
+        super().__init__(parent)
+        self.setObjectName("folderDialog")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.multi_select = multi_select
+        self.selected_folders: List[str] = []
+        self.history: List[str] = []  # 导航历史
+        self.history_index = -1  # 当前历史位置
+        self.favorite_folders: List[str] = []  # 收藏的文件夹
+        self.config_service = config_service
+        self.i18n = get_i18n_manager()
+        self._setup_theme_tokens()
+
+        self.setWindowTitle(self._t("Select Folder") + (self._t(" (Multi-select)") if multi_select else ""))
+        self.setWindowIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon))
+        self.setMinimumSize(1000, 650)
+        self.resize(1000, 650)
+        
+        # 设置对话框使用系统调色板背景
+        palette = self.palette()
+        self.setAutoFillBackground(True)
+        self.setPalette(palette)
+
+        # 初始化文件系统模型
+        self.fs_model = QFileSystemModel()
+        self.fs_model.setRootPath(QDir.rootPath())
+        # 显示所有文件夹，包括隐藏文件夹
+        self.fs_model.setFilter(QDir.Filter.Dirs | QDir.Filter.NoDotAndDotDot | QDir.Filter.Hidden)
+        
+        # 使用代理模型实现不区分大小写的排序
+        self.proxy_model = CaseInsensitiveSortProxyModel()
+        self.proxy_model.setSourceModel(self.fs_model)
+        self.proxy_model.setSortCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+
+        # 加载收藏文件夹
+        self._load_favorite_folders()
+
+        self._init_ui()
+        self._connect_signals()
+        self._refresh_header_i18n()
+
+        # 设置初始目录
+        if start_dir and os.path.isdir(start_dir):
+            self.navigate_to(start_dir, add_to_history=True)
+        else:
+            self.navigate_to(str(Path.home()), add_to_history=True)
+    
+    def _t(self, key: str, **kwargs) -> str:
+        """翻译辅助方法"""
+        if self.i18n:
+            return self.i18n.translate(key, **kwargs)
+        return key
+
+    def _mix_color(self, foreground: QColor, background: QColor, foreground_ratio: float) -> str:
+        """混合两种颜色并返回 rgb 字符串"""
+        ratio = max(0.0, min(1.0, foreground_ratio))
+        r = int(foreground.red() * ratio + background.red() * (1 - ratio))
+        g = int(foreground.green() * ratio + background.green() * (1 - ratio))
+        b = int(foreground.blue() * ratio + background.blue() * (1 - ratio))
+        return f"rgb({r}, {g}, {b})"
+
+    def _setup_theme_tokens(self):
+        """初始化对话框的语义化样式 token。"""
+        tokens = _folder_dialog_tokens()
+        self._dialog_bg_color = tokens["dialog_bg"]
+        self._card_bg_color = tokens["card_bg"]
+        self._card_soft_bg_color = tokens["card_soft_bg"]
+        self._toolbar_bg_color = tokens["toolbar_bg"]
+        self._toolbar_border_color = tokens["toolbar_border"]
+        self._input_bg_color = tokens["input_bg"]
+        self._input_focus_bg_color = tokens["input_focus_bg"]
+        self._menu_bg_color = tokens["menu_bg"]
+        self._text_color = tokens["text"]
+        self._title_text_color = tokens["text_title"]
+        self._muted_text_color = tokens["text_muted"]
+        self._selection_text_color = tokens["text_selected"]
+        self._border_color = tokens["border"]
+        self._border_hover_color = tokens["border_hover"]
+        self._border_focus_color = tokens["border_focus"]
+        self._panel_border_color = tokens["panel_border"]
+        self._list_border_color = tokens["list_border"]
+        self._soft_bg_color = tokens["soft_bg"]
+        self._soft_hover_color = tokens["soft_hover"]
+        self._soft_pressed_color = tokens["soft_pressed"]
+        self._soft_border_color = tokens["soft_border"]
+        self._soft_text_color = tokens["soft_text"]
+        self._primary_bg_color = tokens["primary_bg"]
+        self._primary_hover_color = tokens["primary_hover"]
+        self._primary_pressed_color = tokens["primary_pressed"]
+        self._primary_border_color = tokens["primary_border"]
+        self._primary_text_color = tokens["primary_text"]
+        self._chip_bg_color = tokens["chip_bg"]
+        self._chip_border_color = tokens["chip_border"]
+        self._chip_hover_color = tokens["chip_hover"]
+        self._row_hover_color = tokens["hover_bg"]
+        self._selection_bg_color = tokens["selection_bg"]
+        self._splitter_color = tokens["splitter"]
+        self._splitter_hover_color = tokens["splitter_hover"]
+        self._scroll_bg_color = tokens["scroll_bg"]
+        self._scroll_handle_color = tokens["scroll_handle"]
+        self._scroll_handle_hover_color = tokens["scroll_handle_hover"]
+        self._disabled_bg_color = tokens["disabled_bg"]
+        self._disabled_border_color = tokens["disabled_border"]
+        self._disabled_text_color = tokens["disabled_text"]
+        self._favorite_star_color = tokens["warning"]
+        self._accent_color = tokens["accent"]
+        self._radius_sm = 8
+        self._radius_md = 10
+        self._radius_lg = 12
+
+    def _dialog_shell_stylesheet(self) -> str:
+        """应用到整个对话框的共享样式。"""
+        return f"""
+            QDialog#folderDialog {{
+                background: {self._dialog_bg_color};
+            }}
+            QToolTip {{
+                background: {self._menu_bg_color};
+                color: {self._text_color};
+                border: 1px solid {self._panel_border_color};
+                border-radius: {self._radius_sm}px;
+                padding: 4px 8px;
+            }}
+            QScrollBar:vertical {{
+                background: {self._scroll_bg_color};
+                width: 10px;
+                margin: 4px 2px 4px 0px;
+                border: none;
+                border-radius: 5px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {self._scroll_handle_color};
+                min-height: 28px;
+                border-radius: 5px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {self._scroll_handle_hover_color};
+            }}
+            QScrollBar:horizontal {{
+                background: {self._scroll_bg_color};
+                height: 10px;
+                margin: 0px 4px 2px 4px;
+                border: none;
+                border-radius: 5px;
+            }}
+            QScrollBar::handle:horizontal {{
+                background: {self._scroll_handle_color};
+                min-width: 28px;
+                border-radius: 5px;
+            }}
+            QScrollBar::handle:horizontal:hover {{
+                background: {self._scroll_handle_hover_color};
+            }}
+            QScrollBar::add-line,
+            QScrollBar::sub-line,
+            QScrollBar::add-page,
+            QScrollBar::sub-page {{
+                background: transparent;
+                border: none;
+            }}
+        """
+
+    def _menu_stylesheet(self) -> str:
+        """统一菜单样式。"""
+        return f"""
+            QMenu {{
+                margin: 0px;
+                padding: 4px;
+                background: {self._menu_bg_color};
+                background-color: {self._menu_bg_color};
+                color: {self._text_color};
+                border: 1px solid {self._panel_border_color};
+                border-radius: {self._radius_sm}px;
+            }}
+            QMenu::item {{
+                background: transparent;
+                background-color: transparent;
+                padding: 6px 8px;
+                margin: 0px;
+                border-radius: 5px;
+            }}
+            QMenu::item:selected {{
+                background: {self._row_hover_color};
+                background-color: {self._row_hover_color};
+                color: {self._title_text_color};
+            }}
+        """
+
+    def _breadcrumb_button_stylesheet(self, *, muted: bool = False) -> str:
+        """统一面包屑按钮样式。"""
+        text_color = self._muted_text_color if muted else self._title_text_color
+        return f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                color: {text_color};
+                text-align: left;
+                padding: 4px 8px;
+                font-size: 13px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background-color: {self._chip_hover_color};
+                border-color: {self._chip_border_color};
+            }}
+            QPushButton:pressed {{
+                background-color: {self._soft_pressed_color};
+            }}
+        """
+
+    def _ellipsis_button_stylesheet(self) -> str:
+        """统一省略菜单按钮样式。"""
+        return f"""
+            QToolButton {{
+                color: {self._muted_text_color};
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 4px 8px;
+            }}
+            QToolButton:hover {{
+                background-color: {self._chip_hover_color};
+                border-color: {self._chip_border_color};
+            }}
+            QToolButton:pressed {{
+                background-color: {self._soft_pressed_color};
+            }}
+            QToolButton::menu-indicator {{
+                image: none;
+                width: 0px;
+            }}
+        """
+
+    def _init_ui(self):
+        """初始化UI"""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(12, 12, 12, 12)
+
+        toolbar_border = self._toolbar_border_color
+        
+        # 创建工具栏区域（后退/前进/上级目录）
+        toolbar_widget = QWidget()
+        toolbar_widget.setObjectName("folderToolbar")
+        toolbar_widget.setStyleSheet(f"""
+            QWidget#folderToolbar {{
+                background: transparent;
+                border: none;
+            }}
+            QToolButton {{
+                background-color: {self._soft_bg_color};
+                border: 1px solid {self._soft_border_color};
+                border-radius: {self._radius_sm - 1}px;
+                padding: 4px;
+                margin: 2px;
+                color: {self._soft_text_color};
+                font-size: 16px;
+                font-weight: 700;
+            }}
+            QToolButton:hover {{
+                background-color: {self._soft_hover_color};
+                border: 1px solid {self._border_hover_color};
+            }}
+            QToolButton:pressed {{
+                background-color: {self._soft_pressed_color};
+            }}
+            QToolButton:disabled {{
+                color: {self._disabled_text_color};
+                border-color: {self._disabled_border_color};
+            }}
+        """)
+        toolbar_layout = QHBoxLayout(toolbar_widget)
+        toolbar_layout.setContentsMargins(0, 0, 0, 0)
+        toolbar_layout.setSpacing(4)
+
+        # 后退按钮
+        self.back_button = QToolButton()
+        self.back_button.setText("←")
+        set_hover_hint(self.back_button, self._t("Back"))
+        self.back_button.setFixedSize(34, 34)
+        self.back_button.setEnabled(False)
+        toolbar_layout.addWidget(self.back_button)
+
+        # 前进按钮
+        self.forward_button = QToolButton()
+        self.forward_button.setText("→")
+        set_hover_hint(self.forward_button, self._t("Forward"))
+        self.forward_button.setFixedSize(34, 34)
+        self.forward_button.setEnabled(False)
+        toolbar_layout.addWidget(self.forward_button)
+
+        # 上级目录按钮
+        self.parent_button = QToolButton()
+        self.parent_button.setText("↑")
+        set_hover_hint(self.parent_button, self._t("Parent Directory"))
+        self.parent_button.setFixedSize(34, 34)
+        toolbar_layout.addWidget(self.parent_button)
+
+        # 刷新按钮
+        self.refresh_button = QToolButton()
+        self.refresh_button.setText("↻")
+        set_hover_hint(self.refresh_button, self._t("Refresh"))
+        self.refresh_button.setFixedSize(34, 34)
+        toolbar_layout.addWidget(self.refresh_button)
+
+        # 顶部单行：导航按钮 + 地址栏
+        top_bar_widget = QWidget()
+        top_bar_widget.setObjectName("topBar")
+        top_bar_widget.setStyleSheet(f"""
+            QWidget#topBar {{
+                background: {self._toolbar_bg_color};
+                border: 1px solid {toolbar_border};
+                border-radius: {self._radius_lg}px;
+            }}
+        """)
+        top_bar_layout = QHBoxLayout(top_bar_widget)
+        top_bar_layout.setContentsMargins(10, 6, 10, 6)
+        top_bar_layout.setSpacing(8)
+
+        # 创建地址栏区域（面包屑导航）
+        address_widget = QWidget()
+        address_widget.setObjectName("addressCard")
+        address_widget.setStyleSheet(f"""
+            QWidget#addressCard {{
+                background: {self._input_bg_color};
+                border: 1px solid {self._border_color};
+                border-radius: {self._radius_md}px;
+            }}
+        """)
+        address_layout = QHBoxLayout(address_widget)
+        address_layout.setContentsMargins(8, 4, 8, 4)
+        address_layout.setSpacing(5)
+
+        # 地址栏左侧不显示标签，保持和现代资源管理器一致
+
+        # 面包屑导航滚动区域
+        self.breadcrumb_scroll = QScrollArea()
+        self.breadcrumb_scroll.setWidgetResizable(True)
+        self.breadcrumb_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.breadcrumb_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.breadcrumb_scroll.setMaximumHeight(35)
+        self.breadcrumb_scroll.setStyleSheet(f"""
+            QScrollArea {{
+                border: none;
+                background-color: {self._input_bg_color};
+            }}
+            QScrollArea > QWidget > QWidget {{
+                background-color: {self._input_bg_color};
+            }}
+        """)
+
+        # 面包屑容器
+        self.breadcrumb_widget = QWidget()
+        self.breadcrumb_widget.setStyleSheet(
+            f"background-color: {self._input_bg_color};"
+        )
+        self.breadcrumb_layout = QHBoxLayout(self.breadcrumb_widget)
+        self.breadcrumb_layout.setContentsMargins(0, 0, 0, 0)
+        self.breadcrumb_layout.setSpacing(0)
+        self.breadcrumb_layout.addStretch()
+
+        self.breadcrumb_scroll.setWidget(self.breadcrumb_widget)
+        address_layout.addWidget(self.breadcrumb_scroll, 1)
+
+        # 地址栏编辑按钮
+        self.edit_path_button = QToolButton()
+        self.edit_path_button.setText("/")
+        set_hover_hint(self.edit_path_button, self._t("Edit Path"))
+        self.edit_path_button.setStyleSheet(f"""
+            QToolButton {{
+                background-color: {self._chip_bg_color};
+                border: 1px solid {self._chip_border_color};
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 13px;
+                font-weight: 700;
+                color: {self._title_text_color};
+            }}
+            QToolButton:hover {{
+                background-color: {self._chip_hover_color};
+                border: 1px solid {self._border_hover_color};
+            }}
+            QToolButton:pressed {{
+                background-color: {self._soft_pressed_color};
+            }}
+        """)
+        address_layout.addWidget(self.edit_path_button)
+
+        # 路径输入框（初始隐藏，点击编辑按钮时显示）
+        self.path_edit = QLineEdit()
+        self.path_edit.setPlaceholderText(self._t("Path input hint"))
+        self.path_edit.setStyleSheet(f"""
+            QLineEdit {{
+                padding: 8px 10px;
+                border: 1px solid {self._border_color};
+                border-radius: {self._radius_md}px;
+                font-size: 13px;
+                background-color: {self._input_bg_color};
+                color: {self._text_color};
+            }}
+            QLineEdit:hover {{
+                border: 1px solid {self._border_hover_color};
+            }}
+            QLineEdit:focus {{
+                border: 1px solid {self._border_focus_color};
+                background-color: {self._input_focus_bg_color};
+            }}
+        """)
+
+        # 创建一个容器来包含面包屑和输入框，它们互斥显示
+        self.address_container = QWidget()
+        address_container_layout = QVBoxLayout(self.address_container)
+        address_container_layout.setContentsMargins(0, 0, 0, 0)
+        address_container_layout.setSpacing(0)
+        
+        # 面包屑容器
+        self.breadcrumb_container = QWidget()
+        breadcrumb_container_layout = QVBoxLayout(self.breadcrumb_container)
+        breadcrumb_container_layout.setContentsMargins(0, 0, 0, 0)
+        breadcrumb_container_layout.addWidget(address_widget)
+        
+        # 输入框容器
+        self.path_edit_container = QWidget()
+        path_edit_layout = QVBoxLayout(self.path_edit_container)
+        path_edit_layout.setContentsMargins(0, 0, 0, 0)
+        path_edit_layout.addWidget(self.path_edit)
+        self.path_edit_container.hide()
+        
+        # 将两个容器添加到主地址栏容器
+        address_container_layout.addWidget(self.breadcrumb_container)
+        address_container_layout.addWidget(self.path_edit_container)
+        top_bar_layout.addWidget(toolbar_widget, 0)
+        top_bar_layout.addWidget(self.address_container, 1)
+
+        layout.addWidget(top_bar_widget)
+
+        # 主内容区域：左侧快捷栏 + 右侧文件夹树
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setStyleSheet(f"""
+            QSplitter::handle {{
+                background-color: {self._splitter_color};
+                width: 6px;
+                border-radius: 3px;
+            }}
+            QSplitter::handle:hover {{
+                background-color: {self._splitter_hover_color};
+            }}
+        """)
+
+        # 左侧快捷栏
+        shortcuts_widget = self._create_shortcuts_panel()
+        splitter.addWidget(shortcuts_widget)
+
+        # 右侧文件夹树形视图
+        self.folder_tree = QTreeView()
+        self.folder_tree.setMouseTracking(True)
+        self.folder_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.folder_tree.setModel(self.proxy_model)
+        self.folder_tree.setStyleSheet(f"""
+            QTreeView {{
+                border: 1px solid {self._list_border_color};
+                border-radius: {self._radius_lg}px;
+                background-color: {self._card_bg_color};
+                selection-background-color: {self._selection_bg_color};
+                selection-color: {self._selection_text_color};
+                font-size: 13px;
+                color: {self._text_color};
+                padding: 0px;
+            }}
+            QTreeView::item {{
+                padding: 7px 8px;
+                border: none;
+                border-radius: {self._radius_sm}px;
+                margin: 0px;
+            }}
+            QTreeView::item:hover {{
+                background-color: {self._row_hover_color};
+                color: {self._text_color};
+                border-radius: {self._radius_sm}px;
+                margin: 0px;
+            }}
+            QTreeView::item:selected {{
+                background-color: {self._selection_bg_color};
+                color: {self._selection_text_color};
+                border-radius: {self._radius_sm}px;
+                margin: 0px;
+            }}
+            QTreeView::item:selected:active {{
+                border-radius: {self._radius_sm}px;
+            }}
+            QTreeView::item:selected:!active {{
+                border-radius: {self._radius_sm}px;
+            }}
+            QHeaderView::section {{
+                background-color: {self._card_soft_bg_color};
+                color: {self._title_text_color};
+                border: none;
+                border-right: 1px solid {self._panel_border_color};
+                border-bottom: 1px solid {self._panel_border_color};
+                padding: 6px 10px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QHeaderView::section:hover {{
+                background-color: {self._chip_hover_color};
+            }}
+            QHeaderView::section:first {{
+                border-top-left-radius: {self._radius_md}px;
+            }}
+            QHeaderView::section:last {{
+                border-top-right-radius: {self._radius_md}px;
+                border-right: none;
+            }}
+        """)
+
+        # 仅显示两列：名称、修改日期
+        self.folder_tree.showColumn(0)  # Name
+        self.folder_tree.showColumn(3)  # Date Modified
+        self.folder_tree.hideColumn(1)  # Size
+        self.folder_tree.hideColumn(2)  # Type
+
+        # 设置多选模式
+        if self.multi_select:
+            self.folder_tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        else:
+            self.folder_tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.folder_tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+
+        self.folder_tree.setHeaderHidden(False)
+        self.folder_tree.setSortingEnabled(True)
+        self.folder_tree.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+        self.folder_tree.setAlternatingRowColors(False)
+        header = self.folder_tree.header()
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        header.setMinimumHeight(34)
+        header.setSectionsClickable(True)
+        header.setSortIndicatorShown(True)
+        header.setStretchLastSection(False)
+        header.moveSection(3, 1)  # Date Modified 到第2列
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header.resizeSection(3, 180)
+        
+        splitter.addWidget(self.folder_tree)
+
+        # 设置分割比例：快捷栏占20%，文件夹树占80%
+        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(1, 8)
+
+        layout.addWidget(splitter, 1)
+
+        # 底部提示和选中信息
+        info_widget = QWidget()
+        info_widget.setObjectName("infoBar")
+        info_widget.setStyleSheet(f"""
+            QWidget#infoBar {{
+                background: {self._card_soft_bg_color};
+                border: 1px solid {self._panel_border_color};
+                border-radius: {self._radius_md}px;
+            }}
+        """)
+        info_layout = QHBoxLayout(info_widget)
+        info_layout.setContentsMargins(10, 6, 10, 6)
+
+        if self.multi_select:
+            tip_label = QLabel(self._t("Tip: Hold Ctrl or Shift to select multiple folders, right-click to favorite"))
+            tip_label.setStyleSheet(f"color: {self._muted_text_color}; font-size: 12px;")
+            info_layout.addWidget(tip_label)
+
+        info_layout.addStretch()
+
+        self.selection_label = QLabel(self._t("Not Selected"))
+        self.selection_label.setStyleSheet(f"color: {self._title_text_color}; font-weight: 600; font-size: 12px;")
+        info_layout.addWidget(self.selection_label)
+
+        layout.addWidget(info_widget)
+
+        # 底部按钮
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(8, 8, 8, 8)
+        button_layout.addStretch()
+
+        self.ok_button = QPushButton(self._t("OK"))
+        self.ok_button.setMinimumWidth(100)
+        self.ok_button.setMinimumHeight(32)
+        self.ok_button.setEnabled(False)
+        self.ok_button.setProperty("variant", "accent")
+        button_layout.addWidget(self.ok_button)
+
+        self.cancel_button = QPushButton(self._t("Cancel"))
+        self.cancel_button.setMinimumWidth(100)
+        self.cancel_button.setMinimumHeight(32)
+        # Use standard button style from theme
+        button_layout.addWidget(self.cancel_button)
+
+        layout.addLayout(button_layout)
+        apply_widget_stylesheet(self, self._dialog_shell_stylesheet())
+
+    def _create_shortcuts_panel(self) -> QWidget:
+        """创建左侧快捷栏 - 树形结构"""
+        widget = QWidget()
+        widget.setObjectName("shortcutsPanel")
+        widget.setMinimumWidth(180)
+        widget.setMaximumWidth(280)
+        widget.setStyleSheet(f"""
+            QWidget#shortcutsPanel {{
+                background-color: {self._card_bg_color};
+                border: 1px solid {self._panel_border_color};
+                border-radius: {self._radius_md}px;
+            }}
+        """)
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # 创建树形视图
+        self.shortcuts_tree = QTreeView()
+        self.shortcuts_tree.setMouseTracking(True)
+        self.shortcuts_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.shortcuts_tree.setHeaderHidden(True)
+        self.shortcuts_tree.setIndentation(12)
+        self.shortcuts_tree.setAnimated(True)
+        self.shortcuts_tree.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.shortcuts_tree.setStyleSheet(f"""
+            QTreeView {{
+                border: none;
+                background-color: transparent;
+                selection-background-color: {self._selection_bg_color};
+                selection-color: {self._selection_text_color};
+                font-size: 13px;
+                outline: none;
+                color: {self._text_color};
+            }}
+            QTreeView::item {{
+                padding: 6px 8px;
+                border: none;
+                border-radius: 6px;
+            }}
+            QTreeView::item:hover {{
+                background-color: {self._row_hover_color};
+                color: {self._text_color};
+            }}
+            QTreeView::item:selected {{
+                background-color: {self._selection_bg_color};
+                color: {self._selection_text_color};
+            }}
+            QTreeView::branch {{
+                background-color: transparent;
+            }}
+            QTreeView::branch:has-children:!has-siblings:closed,
+            QTreeView::branch:closed:has-children:has-siblings {{
+                image: url(none);
+                border: none;
+            }}
+            QTreeView::branch:open:has-children:!has-siblings,
+            QTreeView::branch:open:has-children:has-siblings {{
+                image: url(none);
+                border: none;
+            }}
+        """)
+
+        self.shortcuts_tree_model = QStandardItemModel()
+        self.shortcuts_tree.setModel(self.shortcuts_tree_model)
+
+        # 构建快捷访问树
+        self._build_shortcuts_tree()
+
+        # 默认展开所有项
+        self.shortcuts_tree.expandAll()
+
+        layout.addWidget(self.shortcuts_tree)
+
+        # 连接点击信号
+        self.shortcuts_tree.clicked.connect(self._on_tree_shortcut_clicked)
+
+        return widget
+
+    def _make_shortcut_item(self, text: str, path: str = "", icon: Optional[QIcon] = None, selectable: bool = True) -> QStandardItem:
+        """创建快捷栏项（统一图标和数据）"""
+        item = QStandardItem(text)
+        if icon and not icon.isNull():
+            item.setIcon(icon)
+        item.setSelectable(selectable)
+        if path:
+            item.setData(path, Qt.ItemDataRole.UserRole)
+            item.setToolTip(path)
+        return item
+
+    def _normalize_shortcut_name(self, name: str) -> str:
+        """移除名称前缀里的 emoji/符号，保留可读文本"""
+        parts = name.split(" ", 1)
+        if len(parts) == 2:
+            prefix = parts[0]
+            if not prefix.isalnum():
+                return parts[1]
+        return name
+
+    def _build_shortcuts_tree(self):
+        """构建快捷访问树形结构"""
+        home = Path.home()
+        style = self.style()
+        icon_provider = QFileIconProvider()
+        dir_icon = icon_provider.icon(QFileIconProvider.IconType.Folder)
+        desktop_icon = style.standardIcon(QStyle.StandardPixmap.SP_DesktopIcon)
+        drive_icon = style.standardIcon(QStyle.StandardPixmap.SP_DriveHDIcon)
+        file_icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+        quick_icon = style.standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView)
+        favorite_icon = style.standardIcon(QStyle.StandardPixmap.SP_DialogYesButton)
+
+        # 收藏文件夹分组 - 放在快速访问之后
+        # 获取真实的快速访问文件夹（从注册表/系统）
+        quick_access_folders = self._get_quick_access_folders()
+
+        if quick_access_folders:
+            # 快速访问分组
+            quick_access_root = self._make_shortcut_item(self._t("Quick Access"), icon=quick_icon, selectable=False)
+            font = quick_access_root.font()
+            font.setBold(True)
+            quick_access_root.setFont(font)
+            self.shortcuts_tree_model.appendRow(quick_access_root)
+
+            for name, path in quick_access_folders:
+                clean_name = self._normalize_shortcut_name(name)
+                item = self._make_shortcut_item(clean_name, path=path, icon=dir_icon)
+                quick_access_root.appendRow(item)
+
+        # 收藏文件夹分组 - 放在快速访问和此电脑之间
+        if self.favorite_folders:
+            favorite_root = self._make_shortcut_item(self._t("Favorites"), icon=favorite_icon, selectable=False)
+            font = favorite_root.font()
+            font.setBold(True)
+            favorite_root.setFont(font)
+            self.shortcuts_tree_model.appendRow(favorite_root)
+
+            for path in self.favorite_folders:
+                if os.path.exists(path):
+                    folder_name = os.path.basename(path) or path
+                    item = self._make_shortcut_item(folder_name, path=path, icon=dir_icon)
+                    item.setData("favorite", Qt.ItemDataRole.UserRole + 1)  # 标记为收藏项
+                    favorite_root.appendRow(item)
+
+        # 此电脑分组
+        this_pc_root = self._make_shortcut_item(self._t("This PC"), icon=drive_icon, selectable=False)
+        font = this_pc_root.font()
+        font.setBold(True)
+        this_pc_root.setFont(font)
+        self.shortcuts_tree_model.appendRow(this_pc_root)
+
+        # 用户文件夹
+        user_folders = [
+            (self._t("Desktop"), home / "Desktop", desktop_icon),
+            (self._t("Documents"), home / "Documents", file_icon),
+            (self._t("Downloads"), home / "Downloads", dir_icon),
+            (self._t("Pictures"), home / "Pictures", dir_icon),
+            (self._t("Music"), home / "Music", dir_icon),
+            (self._t("Videos"), home / "Videos", dir_icon),
+        ]
+
+        for name, path, icon in user_folders:
+            if path.exists():
+                item = self._make_shortcut_item(name, path=str(path), icon=icon)
+                this_pc_root.appendRow(item)
+
+        # 驱动器
+        drives = QDir.drives()
+        drives_list = []
+        for drive in drives:
+            drive_path = Path(drive.absolutePath())
+            if drive_path.exists():
+                # 尝试获取驱动器卷标
+                try:
+                    import win32api
+                    volume_name = win32api.GetVolumeInformation(str(drive_path))[0]
+                    if volume_name:
+                        display_name = f"{volume_name} ({drive_path})"
+                    else:
+                        display_name = f"{self._t('Local Disk')} ({drive_path})"
+                except Exception:
+                    display_name = f"{self._t('Local Disk')} ({drive_path})"
+
+                drives_list.append((display_name, str(drive_path)))
+
+        # 按盘符排序
+        drives_list.sort(key=lambda x: x[1])
+        for name, path in drives_list:
+            item = self._make_shortcut_item(name, path=path, icon=drive_icon)
+            this_pc_root.appendRow(item)
+
+    def _get_quick_access_folders(self):
+        """从 Windows 注册表获取真实的快速访问文件夹"""
+        quick_access = []
+
+        try:
+            import winreg
+
+            # 尝试读取快速访问的固定文件夹（从注册表）
+            # HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path)
+
+            # 常见的快速访问项
+            shell_folders = {
+                "Desktop": self._t("Desktop"),
+                "My Pictures": self._t("Pictures"),
+                "{374DE290-123F-4565-9164-39C4925E467B}": self._t("Downloads"),
+                "Personal": self._t("Documents"),
+                "My Music": self._t("Music"),
+                "My Video": self._t("Videos"),
+            }
+
+            for value_name, display_name in shell_folders.items():
+                try:
+                    path_value, _ = winreg.QueryValueEx(key, value_name)
+                    # 展开环境变量
+                    expanded_path = os.path.expandvars(path_value)
+                    if os.path.exists(expanded_path):
+                        quick_access.append((display_name, expanded_path))
+                except Exception:
+                    pass
+
+            winreg.CloseKey(key)
+
+        except Exception:
+            # 如果读取注册表失败，使用默认路径
+            home = Path.home()
+            default_folders = [
+                (self._t("Desktop"), home / "Desktop"),
+                (self._t("Documents"), home / "Documents"),
+                (self._t("Downloads"), home / "Downloads"),
+                (self._t("Pictures"), home / "Pictures"),
+            ]
+            for name, path in default_folders:
+                if path.exists():
+                    quick_access.append((name, str(path)))
+
+        # 添加用户目录下的其他常见文件夹（排除系统文件夹）
+        try:
+            home = Path.home()
+            exclude_names = {'Desktop', 'Documents', 'Downloads', 'Pictures', 'Music', 'Videos',
+                           'AppData', 'Application Data', 'Cookies', 'Local Settings',
+                           'NetHood', 'PrintHood', 'Recent', 'SendTo', 'Templates',
+                           'Start Menu', 'ntuser.dat', 'NTUSER.DAT'}
+
+            additional_folders = []
+            if home.exists():
+                for item in home.iterdir():
+                    if item.is_dir() and not item.name.startswith('.') and not item.name.startswith('$'):
+                        if item.name not in exclude_names:
+                            # 跳过 OneDrive（稍后单独处理）
+                            if not item.name.startswith('OneDrive'):
+                                additional_folders.append((f"📂 {item.name}", str(item)))
+
+            # 排序并添加前5个
+            additional_folders.sort(key=lambda x: x[0].lower())
+            quick_access.extend(additional_folders[:5])
+
+            # OneDrive
+            onedrive_paths = [
+                home / "OneDrive",
+                home / "OneDrive - Personal",
+                home / "OneDrive - 个人",
+            ]
+            for onedrive_path in onedrive_paths:
+                if onedrive_path.exists():
+                    quick_access.append(("☁️ OneDrive", str(onedrive_path)))
+                    break
+
+        except Exception:
+            pass
+
+        return quick_access
+
+    def _on_tree_shortcut_clicked(self, index: QModelIndex):
+        """树形快捷方式点击"""
+        item = self.shortcuts_tree_model.itemFromIndex(index)
+        if item:
+            path = item.data(Qt.ItemDataRole.UserRole)
+            if path and os.path.isdir(path):
+                self.navigate_to(path, add_to_history=True)
+
+    def _show_folder_tree_context_menu(self, pos):
+        """右键菜单：目录树收藏操作"""
+        index = self.folder_tree.indexAt(pos)
+        if not index.isValid():
+            return
+
+        source_index = self.proxy_model.mapToSource(index)
+        folder_path = self.fs_model.filePath(source_index)
+        if not folder_path or not os.path.isdir(folder_path):
+            return
+
+        menu = QMenu(self)
+        menu.setStyleSheet(self._menu_stylesheet())
+        if folder_path in self.favorite_folders:
+            action = menu.addAction(self._t("Remove from Favorites"))
+            action.triggered.connect(lambda: self._remove_favorite_by_path(folder_path))
+        else:
+            action = menu.addAction(self._t("Add to Favorites"))
+            action.triggered.connect(lambda: self._add_favorite(folder_path))
+        menu.exec(self.folder_tree.viewport().mapToGlobal(pos))
+
+    def _show_shortcuts_context_menu(self, pos):
+        """右键菜单：快捷栏收藏操作"""
+        index = self.shortcuts_tree.indexAt(pos)
+        if not index.isValid():
+            return
+
+        item = self.shortcuts_tree_model.itemFromIndex(index)
+        if not item:
+            return
+
+        folder_path = item.data(Qt.ItemDataRole.UserRole)
+        if not folder_path or not os.path.isdir(folder_path):
+            return
+
+        menu = QMenu(self)
+        menu.setStyleSheet(self._menu_stylesheet())
+        if folder_path in self.favorite_folders:
+            action = menu.addAction(self._t("Remove from Favorites"))
+            action.triggered.connect(lambda: self._remove_favorite_by_path(folder_path))
+        else:
+            action = menu.addAction(self._t("Add to Favorites"))
+            action.triggered.connect(lambda: self._add_favorite(folder_path))
+        menu.exec(self.shortcuts_tree.viewport().mapToGlobal(pos))
+
+    def _connect_signals(self):
+        """连接信号"""
+        self.ok_button.clicked.connect(self.accept)
+        self.cancel_button.clicked.connect(self.reject)
+
+        # 工具栏按钮
+        self.back_button.clicked.connect(self._go_back)
+        self.forward_button.clicked.connect(self._go_forward)
+        self.parent_button.clicked.connect(self._go_parent)
+        self.refresh_button.clicked.connect(self._refresh_current)
+
+        # 地址栏
+        self.edit_path_button.clicked.connect(self._toggle_path_edit)
+        self.path_edit.returnPressed.connect(self._on_path_edit_confirmed)
+        self.path_edit.installEventFilter(self)
+
+        self.folder_tree.selectionModel().selectionChanged.connect(self._on_selection_changed)
+        self.folder_tree.doubleClicked.connect(self._on_folder_double_clicked)
+        self.folder_tree.customContextMenuRequested.connect(self._show_folder_tree_context_menu)
+        self.shortcuts_tree.customContextMenuRequested.connect(self._show_shortcuts_context_menu)
+
+    def _popup_menu_left_aligned(self, anchor_button: QToolButton, menu: QMenu):
+        """在按钮下方弹出菜单，并与 '...' 按钮水平居中"""
+        # 宽度硬设定
+        menu.setFixedWidth(140)
+        menu.setStyleSheet(self._menu_stylesheet())
+
+        x = (anchor_button.width() - menu.width()) // 2
+        pos = anchor_button.mapToGlobal(QPoint(x, anchor_button.height()))
+        menu.exec(pos)
+
+    def _refresh_header_i18n(self):
+        """刷新目录表头文案（覆盖 QFileSystemModel 默认系统列名）"""
+        self.proxy_model.set_header_override(0, self._t("Name"))
+        self.proxy_model.set_header_override(3, self._t("Date Modified"))
+        if hasattr(self, "folder_tree"):
+            self.folder_tree.header().viewport().update()
+
+    def navigate_to(self, path: str, add_to_history: bool = True):
+        """导航到指定路径"""
+        if not os.path.isdir(path):
+            return
+
+        path = os.path.normpath(path)
+
+        # 添加到历史记录
+        if add_to_history:
+            # 如果当前不在历史末尾，删除当前位置之后的历史
+            if self.history_index < len(self.history) - 1:
+                self.history = self.history[:self.history_index + 1]
+
+            # 如果新路径与当前路径不同，添加到历史
+            if not self.history or self.history[-1] != path:
+                self.history.append(path)
+                self.history_index = len(self.history) - 1
+
+        # 设置当前目录为根索引，只显示当前目录的内容（嵌套式）
+        source_index = self.fs_model.index(path)
+        if source_index.isValid():
+            proxy_index = self.proxy_model.mapFromSource(source_index)
+            self.folder_tree.setRootIndex(proxy_index)  # 只显示当前目录内容
+            # 不需要设置 currentIndex，因为我们已经进入了这个目录
+
+            # 更新面包屑导航
+            self._update_breadcrumb(path)
+
+            # 更新按钮状态
+            self._update_navigation_buttons()
+            
+            # 更新选择状态（如果没有选中任何文件夹，显示当前目录）
+            self._on_selection_changed()
+
+    def _update_breadcrumb(self, path: str):
+        """更新面包屑导航"""
+        # 清空现有面包屑
+        while self.breadcrumb_layout.count() > 1:  # 保留最后的 stretch
+            item = self.breadcrumb_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # 分解路径
+        parts = []
+        current = Path(path)
+
+        # 构建路径部分
+        while True:
+            parts.insert(0, (str(current), current.name if current.name else str(current)))
+            parent = current.parent
+            if parent == current:  # 到达根目录
+                break
+            current = parent
+
+        # 长路径折叠：仅保留尾部目录，前部使用省略号
+        # 规则：层级很多或总文本过长时触发
+        total_len = sum(len(name) for _, name in parts)
+        omitted_parts = []
+        if len(parts) > 5 or total_len > 48:
+            keep_tail = 4
+            if len(parts) > keep_tail:
+                omitted_parts = parts[:-keep_tail]
+                parts = [("...", "...")] + parts[-keep_tail:]
+
+        # 创建面包屑按钮
+        for i, (full_path, name) in enumerate(parts):
+            if name == "..." and full_path == "...":
+                ellipsis_btn = QToolButton()
+                ellipsis_btn.setText("...")
+                ellipsis_btn.setStyleSheet(self._ellipsis_button_stylesheet())
+
+                ellipsis_menu = QMenu(self)
+                for omitted_path, omitted_name in omitted_parts:
+                    display_name = omitted_name if omitted_name else omitted_path
+                    action = ellipsis_menu.addAction(display_name)
+                    action.setToolTip(omitted_path)
+                    action.triggered.connect(lambda checked=False, p=omitted_path: self.navigate_to(p, add_to_history=True))
+                ellipsis_btn.clicked.connect(
+                    lambda checked=False, b=ellipsis_btn, m=ellipsis_menu: self._popup_menu_left_aligned(b, m)
+                )
+
+                self.breadcrumb_layout.insertWidget(self.breadcrumb_layout.count() - 1, ellipsis_btn)
+                if i < len(parts) - 1:
+                    separator = QLabel(" > ")
+                    separator.setStyleSheet(f"color: {self._muted_text_color}; font-size: 12px;")
+                    self.breadcrumb_layout.insertWidget(self.breadcrumb_layout.count() - 1, separator)
+                continue
+
+            # 路径按钮
+            btn = QPushButton(name if name else full_path)
+            btn.setStyleSheet(self._breadcrumb_button_stylesheet())
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda checked, p=full_path: self.navigate_to(p, add_to_history=True))
+            self.breadcrumb_layout.insertWidget(self.breadcrumb_layout.count() - 1, btn)
+
+            # 分隔符（最后一个不加）
+            if i < len(parts) - 1:
+                separator = QLabel(" > ")
+                separator.setStyleSheet(f"color: {self._muted_text_color}; font-size: 12px;")
+                self.breadcrumb_layout.insertWidget(self.breadcrumb_layout.count() - 1, separator)
+
+    def _update_navigation_buttons(self):
+        """更新导航按钮状态"""
+        self.back_button.setEnabled(self.history_index > 0)
+        self.forward_button.setEnabled(self.history_index < len(self.history) - 1)
+
+    def _go_back(self):
+        """后退"""
+        if self.history_index > 0:
+            self.history_index -= 1
+            path = self.history[self.history_index]
+            self.navigate_to(path, add_to_history=False)
+
+    def _go_forward(self):
+        """前进"""
+        if self.history_index < len(self.history) - 1:
+            self.history_index += 1
+            path = self.history[self.history_index]
+            self.navigate_to(path, add_to_history=False)
+
+    def _go_parent(self):
+        """返回上级目录"""
+        if self.history:
+            current_path = self.history[self.history_index]
+            parent_path = str(Path(current_path).parent)
+            if parent_path != current_path:  # 确保不是根目录
+                self.navigate_to(parent_path, add_to_history=True)
+
+    def _refresh_current(self):
+        """刷新当前目录"""
+        if self.history:
+            current_path = self.history[self.history_index]
+            # 刷新文件系统模型
+            source_index = self.fs_model.index(current_path)
+            if source_index.isValid():
+                proxy_index = self.proxy_model.mapFromSource(source_index)
+                self.folder_tree.setRootIndex(proxy_index)
+
+    def _on_sort_changed(self, index: int):
+        """排序方式改变"""
+        # 0: 名称升序, 1: 名称降序
+        # 2: 修改时间升序, 3: 修改时间降序
+        # 4: 大小升序, 5: 大小降序
+        
+        if index == 0:  # 名称 ↑
+            self.folder_tree.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+        elif index == 1:  # 名称 ↓
+            self.folder_tree.sortByColumn(0, Qt.SortOrder.DescendingOrder)
+        elif index == 2:  # 修改时间 ↑
+            self.folder_tree.sortByColumn(3, Qt.SortOrder.AscendingOrder)
+        elif index == 3:  # 修改时间 ↓
+            self.folder_tree.sortByColumn(3, Qt.SortOrder.DescendingOrder)
+        elif index == 4:  # 大小 ↑
+            self.folder_tree.sortByColumn(1, Qt.SortOrder.AscendingOrder)
+        elif index == 5:  # 大小 ↓
+            self.folder_tree.sortByColumn(1, Qt.SortOrder.DescendingOrder)
+
+    def _toggle_path_edit(self):
+        """切换路径编辑模式"""
+        if self.path_edit_container.isVisible():
+            # 隐藏输入框，显示面包屑
+            self._cancel_path_edit()
+        else:
+            # 显示输入框，隐藏面包屑
+            self.breadcrumb_container.hide()
+            self.path_edit_container.show()
+            if self.history:
+                self.path_edit.setText(self.history[self.history_index])
+            self.path_edit.setFocus()
+            self.path_edit.selectAll()
+
+    def _on_path_edit_confirmed(self):
+        """确认路径输入"""
+        path = self.path_edit.text().strip()
+        if path and os.path.isdir(path):
+            self.navigate_to(path, add_to_history=True)
+            # 切换回面包屑显示
+            self._cancel_path_edit()
+        else:
+            QMessageBox.warning(
+                self,
+                self._t("Path Error"),
+                self._t("Path does not exist or is not a valid directory:\n{path}", path=path),
+            )
+            # 保持输入框显示，让用户修改
+
+    def eventFilter(self, obj, event):
+        """事件过滤器：处理 Esc 键取消路径编辑和点击外部区域"""
+        from PyQt6.QtCore import QEvent
+        
+        if obj == self.path_edit:
+            if event.type() == QEvent.Type.KeyPress:
+                if event.key() == Qt.Key.Key_Escape:
+                    # 取消编辑，恢复面包屑
+                    self._cancel_path_edit()
+                    return True
+            elif event.type() == QEvent.Type.FocusOut:
+                # 失去焦点时恢复面包屑
+                self._cancel_path_edit()
+                return False
+        
+        return super().eventFilter(obj, event)
+    
+    def _cancel_path_edit(self):
+        """取消路径编辑，恢复面包屑显示"""
+        if self.path_edit_container.isVisible():
+            self.path_edit_container.hide()
+            self.breadcrumb_container.show()
+
+    def _on_folder_double_clicked(self, index: QModelIndex):
+        """文件夹双击：进入该文件夹"""
+        source_index = self.proxy_model.mapToSource(index)
+        path = self.fs_model.filePath(source_index)
+        if os.path.isdir(path):
+            self.navigate_to(path, add_to_history=True)
+
+    def _on_selection_changed(self):
+        """选择改变时更新状态"""
+        # 只获取第一列（名称列）的选中行，避免重复计数
+        selected_rows = self.folder_tree.selectionModel().selectedRows(0)
+        self.selected_folders = [self.fs_model.filePath(self.proxy_model.mapToSource(idx)) for idx in selected_rows]
+
+        count = len(self.selected_folders)
+        if count == 0:
+            # 没有选中任何文件夹时，显示当前目录
+            if self.history and self.history_index >= 0:
+                current_dir = self.history[self.history_index]
+                dir_name = os.path.basename(current_dir) or current_dir
+                self.selection_label.setText(self._t("Will add current directory: {name}", name=dir_name))
+                self.ok_button.setEnabled(True)
+            else:
+                self.selection_label.setText(self._t("Not Selected"))
+                self.ok_button.setEnabled(False)
+        elif count == 1:
+            folder_name = os.path.basename(self.selected_folders[0])
+            self.selection_label.setText(self._t("Selected: {name}", name=folder_name))
+            self.ok_button.setEnabled(True)
+        else:
+            self.selection_label.setText(self._t("Selected {count} folders", count=count))
+            self.ok_button.setEnabled(True)
+
+    def get_selected_folders(self) -> List[str]:
+        """获取选中的文件夹列表"""
+        # 如果没有选中任何文件夹，返回当前目录
+        if not self.selected_folders and self.history and self.history_index >= 0:
+            return [self.history[self.history_index]]
+        return self.selected_folders
+
+    def _get_config_path(self) -> str:
+        """获取配置文件路径，支持打包和开发环境"""
+        return resource_path(os.path.join("examples", "config.json"))
+    
+    def _get_favorites_config_path(self) -> str:
+        """获取收藏文件夹配置文件路径（用户目录）"""
+        # 使用用户目录存储收藏，避免污染模板文件
+        user_config_dir = Path.home() / ".manga-translator-ui"
+        user_config_dir.mkdir(exist_ok=True)
+        return str(user_config_dir / "favorites.json")
+
+    def _load_favorite_folders(self):
+        """从配置文件加载收藏文件夹"""
+        try:
+            if self.config_service:
+                # 使用config_service加载
+                config = self.config_service.get_config()
+                self.favorite_folders = config.app.favorite_folders or []
+            else:
+                # 降级方案：直接读取文件
+                config_path = self._get_config_path()
+                if os.path.exists(config_path):
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        config_dict = json.load(f)
+                        self.favorite_folders = config_dict.get('app', {}).get('favorite_folders', [])
+                else:
+                    self.favorite_folders = []
+        except Exception as e:
+            print(f"즐겨찾기 폴더 로드 실패: {e}")
+            self.favorite_folders = []
+
+    def _save_favorite_folders(self):
+        """保存收藏文件夹到配置文件"""
+        try:
+            if self.config_service:
+                # 使用config_service保存
+                config = self.config_service.get_config()
+                config.app.favorite_folders = self.favorite_folders
+                self.config_service.set_config(config)
+                self.config_service.save_config_file()
+            else:
+                # 降级方案：直接写入文件
+                config_path = self._get_config_path()
+                
+                # 读取现有配置
+                config_dict = {}
+                if os.path.exists(config_path):
+                    try:
+                        with open(config_path, 'r', encoding='utf-8') as f:
+                            config_dict = json.load(f)
+                    except Exception:
+                        config_dict = {}
+                
+                # 确保 app 键存在
+                if 'app' not in config_dict:
+                    config_dict['app'] = {}
+                
+                # 确保 app 是字典类型
+                if not isinstance(config_dict['app'], dict):
+                    config_dict['app'] = {}
+                
+                # 更新收藏文件夹
+                config_dict['app']['favorite_folders'] = self.favorite_folders
+                
+                # 保存配置
+                os.makedirs(os.path.dirname(config_path), exist_ok=True)
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config_dict, f, indent=2, ensure_ascii=False)
+                
+        except Exception as e:
+            print(f"즐겨찾기 폴더 저장 실패: {e}")
+            # 不弹窗，避免打扰用户
+
+    def _toggle_favorite(self):
+        """切换当前文件夹的收藏状态"""
+        if not self.history or self.history_index < 0:
+            return
+        
+        current_path = self.history[self.history_index]
+        
+        if current_path in self.favorite_folders:
+            self._remove_favorite_by_path(current_path)
+        else:
+            self._add_favorite(current_path)
+    
+    def _add_favorite(self, folder_path: str):
+        """添加文件夹到收藏"""
+        if folder_path not in self.favorite_folders:
+            self.favorite_folders.append(folder_path)
+            self._save_favorite_folders()
+            self._update_favorites_in_tree()
+        
+    def _remove_favorite(self, item):
+        """从收藏中移除指定项（通过树项）"""
+        path = item.data(Qt.ItemDataRole.UserRole)
+        self._remove_favorite_by_path(path)
+    
+    def _remove_favorite_by_path(self, folder_path: str):
+        """从收藏中移除指定路径"""
+        if folder_path in self.favorite_folders:
+            self.favorite_folders.remove(folder_path)
+            self._save_favorite_folders()
+            self._update_favorites_in_tree()
+            
+    def _refresh_shortcuts_tree(self):
+        """刷新快捷栏树"""
+        self.shortcuts_tree_model.clear()
+        self._build_shortcuts_tree()
+        self.shortcuts_tree.expandAll()
+        # 刷新视图以更新星星显示
+        self.shortcuts_tree.viewport().update()
+        self.folder_tree.viewport().update()
+    
+    def _update_favorites_in_tree(self):
+        """只更新收藏夹部分，不重建整个树"""
+        # 查找收藏夹根节点
+        favorite_root = None
+        favorite_root_index = -1
+        for i in range(self.shortcuts_tree_model.rowCount()):
+            item = self.shortcuts_tree_model.item(i)
+            if item and item.text() == self._t("Favorites"):
+                favorite_root = item
+                favorite_root_index = i
+                break
+        
+        # 如果有收藏夹，更新它
+        if self.favorite_folders:
+            if favorite_root:
+                # 清空现有的收藏项
+                favorite_root.removeRows(0, favorite_root.rowCount())
+            else:
+                # 创建收藏夹根节点（插入到第一个位置，快速访问之后）
+                favorite_root = self._make_shortcut_item(
+                    self._t("Favorites"),
+                    icon=self.style().standardIcon(QStyle.StandardPixmap.SP_DialogYesButton),
+                    selectable=False,
+                )
+                font = favorite_root.font()
+                font.setBold(True)
+                favorite_root.setFont(font)
+                # 插入到快速访问之后（如果有的话）
+                insert_index = 1 if self.shortcuts_tree_model.rowCount() > 0 else 0
+                self.shortcuts_tree_model.insertRow(insert_index, favorite_root)
+            
+            # 添加收藏项
+            for path in self.favorite_folders:
+                if os.path.exists(path):
+                    folder_name = os.path.basename(path) or path
+                    item = self._make_shortcut_item(
+                        folder_name,
+                        path=path,
+                        icon=QFileIconProvider().icon(QFileIconProvider.IconType.Folder),
+                    )
+                    item.setData("favorite", Qt.ItemDataRole.UserRole + 1)
+                    favorite_root.appendRow(item)
+            
+            # 展开收藏夹
+            if favorite_root:
+                self.shortcuts_tree.expand(self.shortcuts_tree_model.indexFromItem(favorite_root))
+        else:
+            # 如果没有收藏了，删除收藏夹节点
+            if favorite_root and favorite_root_index >= 0:
+                self.shortcuts_tree_model.removeRow(favorite_root_index)
+        
+        # 刷新视图
+        self.shortcuts_tree.viewport().update()
+        self.folder_tree.viewport().update()
+
+
+def select_folders(parent=None, start_dir: str = "", multi_select: bool = True, config_service=None) -> Optional[List[str]]:
+    """
+    显示文件夹选择对话框
+
+    Args:
+        parent: 父窗口
+        start_dir: 起始目录
+        multi_select: 是否支持多选
+        config_service: 配置服务实例
+
+    Returns:
+        选中的文件夹路径列表，如果取消则返回 None
+    """
+    dialog = FolderDialog(parent, start_dir, multi_select, config_service)
+    if dialog.exec() == QDialog.DialogCode.Accepted:
+        return dialog.get_selected_folders()
+    return None

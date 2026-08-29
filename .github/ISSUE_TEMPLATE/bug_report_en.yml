@@ -1,0 +1,163 @@
+name: English | Bug Report
+description: English template for functional issues, crashes, incorrect results, and related problems (the pre-translation original image/input file is required)
+title: "[BUG] "
+labels:
+  - bug
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please fill out this form as completely as possible to speed up triage.
+        Search existing issues before submitting to avoid duplicates.
+        Redact private or sensitive information first (for example: API keys, account IDs, or usernames in file paths).
+
+        Common file paths in the current version:
+        - Logs (dev environment): `result/log_*.txt`
+        - Logs (packaged build): `_internal/result/log_*.txt`
+        - Main config: `examples/config.json`
+        - Config template: `examples/config-example.json`
+        - Translator config: `examples/config/translators.json`
+
+        Privacy reminder:
+        - Do not upload raw `.env` files, account credentials, API keys, cookies, or tokens
+        - Do not upload full preset files that contain secrets (`presets/*.json`)
+        - Provide only the redacted fields that are necessary
+
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Issue Type
+      description: Select the closest category
+      options:
+        - Functional issue (existing behavior does not match expectations)
+        - Crash / freeze (app exits, becomes unresponsive, black screen, etc.)
+        - Incorrect recognition / translation / rendering result
+        - Performance issue (slow speed, abnormal RAM / VRAM usage)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the problem and its impact in one sentence
+      placeholder: "Example: During batch translation, processing starts failing from the 3rd image and skips output."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: List the exact steps in order so the issue can be reproduced reliably
+      placeholder: |
+        1. Open the xxx page
+        2. Select the xxx model and preset
+        3. Import the xxx image and click Start
+        4. About 5 seconds later, xxx error appears
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: Expected Result vs Actual Result
+      placeholder: |
+        Expected: ...
+        Actual: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Please provide complete version information when possible
+      placeholder: |
+        - OS: Windows 11 23H2
+        - Python: 3.12.x
+        - Launch method: Step 2 - Start Qt UI.bat
+        - Branch / Commit: main@<commit>
+        - GPU / Driver: RTX 4060 / 551.xx
+    validations:
+      required: true
+
+  - type: textarea
+    id: source_files
+    attributes:
+      label: Original Image / Input File (required)
+      description: You must provide the pre-translation original image or input file used when the issue occurred; do not provide only the translated/output image. Upload files or share downloadable links
+      placeholder: |
+        - Pre-translation original image / input file:
+        - Minimal reproducible sample:
+        - Expected output sample:
+    validations:
+      required: true
+
+  - type: textarea
+    id: config_files
+    attributes:
+      label: Config Files (as complete as possible)
+      description: Paste the key configuration or upload the actual config files you used; redact sensitive fields first (do not upload raw `.env` files or secret-bearing presets)
+      placeholder: |
+        - Config file paths (full paths please):
+          - examples/config.json
+          - <your other config file path>
+        - Key config content:
+        ```json
+        {
+          "translator": "...",
+          "detector": "...",
+          "renderer": "..."
+        }
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (required)
+      description: Include at least one relevant error snippet and the timestamp; uploading the full log file is recommended. For the current version, prefer `result/log_*.txt` (`_internal/result/log_*.txt` in packaged builds).
+      placeholder: |
+        - Log file path:
+          - result/log_20260228003000.txt
+        - Time of occurrence:
+        - Relevant error snippet:
+        ```text
+        Traceback (most recent call last):
+        ...
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: json_data
+    attributes:
+      label: Relevant JSON Data (please provide if possible)
+      description: For example request payloads, response payloads, recognition results, or `textblocks`
+      placeholder: |
+        ```json
+        {
+          "image": "sample_01.png",
+          "textblocks": []
+        }
+        ```
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues and confirmed this is not a duplicate
+          required: true
+        - label: I have provided reproducible steps and a minimal sample
+          required: true
+        - label: I have provided the pre-translation original image/input file and included config files, logs, and JSON data when possible, or explained why they are unavailable
+          required: true
+        - label: I have redacted sensitive information
+          required: true

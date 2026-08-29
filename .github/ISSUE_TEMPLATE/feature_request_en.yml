@@ -1,0 +1,68 @@
+name: English | Feature Request
+description: English template for new features, UX improvements, and workflow suggestions
+title: "[FEATURE] "
+labels:
+  - enhancement
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe your use case and expected outcome as clearly as possible.
+        Search existing issues before submitting to avoid duplicates.
+        If an existing feature is behaving incorrectly, use the bug report template instead.
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Use Case
+      description: In what scenario did you run into a limitation or inefficiency?
+      placeholder: "Example: When batch-processing vertical manga, I need to repeatedly adjust the same parameters by hand."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Requested Feature
+      description: Describe the new behavior or improvement you want
+      placeholder: |
+        Suggested feature:
+        - ...
+        Expected interaction:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: value
+    attributes:
+      label: Value / Benefit
+      description: What problem would this solve, and why should it be prioritized?
+      placeholder: Explain how much time it saves, what mistakes it avoids, or which users it helps
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References (optional)
+      description: You can attach mockups, screenshots, logs, JSON examples, or related issue links
+      placeholder: |
+        - Screenshot / mockup:
+        - Example JSON:
+        - Related issue / PR:
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues and confirmed this is not a duplicate suggestion
+          required: true
+        - label: I have confirmed this is not a bug in an existing feature, and I will use the bug template if needed
+          required: true
+        - label: I have provided the use case, expected behavior, and an actionable suggestion as clearly as possible
+          required: true

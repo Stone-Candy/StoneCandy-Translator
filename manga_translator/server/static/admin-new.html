@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理控制台 - Manga Translator</title>
+    <link rel="stylesheet" href="/static/admin/css/admin.css">
+</head>
+<body>
+    <!-- 移动端遮罩层 -->
+    <div class="mobile-overlay" id="mobile-overlay"></div>
+    
+    <div class="admin-wrapper">
+        <!-- 侧边栏 -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">
+                    <span class="sidebar-logo-icon">🎨</span>
+                    <span class="sidebar-logo-text">管理控制台</span>
+                </div>
+                <button class="sidebar-toggle">◀</button>
+            </div>
+            
+            <nav class="nav-menu">
+                <div class="nav-section">
+                    <div class="nav-section-title">概览</div>
+                    <a class="nav-item active" data-module="dashboard">
+                        <span class="nav-item-icon">📊</span>
+                        <span class="nav-item-text">仪表盘</span>
+                    </a>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-section-title">用户管理</div>
+                    <a class="nav-item" data-module="users">
+                        <span class="nav-item-icon">👥</span>
+                        <span class="nav-item-text">用户管理</span>
+                    </a>
+                    <a class="nav-item" data-module="groups">
+                        <span class="nav-item-icon">👨‍👩‍👧‍👦</span>
+                        <span class="nav-item-text">用户组管理</span>
+                    </a>
+                    <a class="nav-item" data-module="quota">
+                        <span class="nav-item-icon">📊</span>
+                        <span class="nav-item-text">配额管理</span>
+                    </a>
+                    <a class="nav-item" data-module="sessions">
+                        <span class="nav-item-icon">🔑</span>
+                        <span class="nav-item-text">会话管理</span>
+                    </a>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-section-title">系统监控</div>
+                    <a class="nav-item" data-module="tasks">
+                        <span class="nav-item-icon">⏳</span>
+                        <span class="nav-item-text">任务监控</span>
+                    </a>
+                    <a class="nav-item" data-module="history">
+                        <span class="nav-item-icon">📜</span>
+                        <span class="nav-item-text">历史记录</span>
+                    </a>
+                    <a class="nav-item" data-module="logs">
+                        <span class="nav-item-icon">📋</span>
+                        <span class="nav-item-text">系统日志</span>
+                    </a>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-section-title">系统设置</div>
+                    <a class="nav-item" data-module="envvars">
+                        <span class="nav-item-icon">🔐</span>
+                        <span class="nav-item-text">API密钥管理</span>
+                    </a>
+                    <a class="nav-item" data-module="config">
+                        <span class="nav-item-icon">⚙️</span>
+                        <span class="nav-item-text">服务器配置</span>
+                    </a>
+                    <a class="nav-item" data-module="announcement">
+                        <span class="nav-item-icon">📢</span>
+                        <span class="nav-item-text">公告管理</span>
+                    </a>
+                    <a class="nav-item" data-module="cleanup">
+                        <span class="nav-item-icon">🧹</span>
+                        <span class="nav-item-text">清理管理</span>
+                    </a>
+                </div>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar">A</div>
+                    <div class="user-details">
+                        <div class="user-name" id="current-user">Admin</div>
+                        <div class="user-role">管理员</div>
+                    </div>
+                    <button class="logout-btn" title="退出登录">🚪</button>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button class="mobile-menu-btn">☰</button>
+                    <div>
+                        <h1 class="page-title" id="page-title">仪表盘</h1>
+                        <div class="breadcrumb">管理控制台 / <span id="breadcrumb-current">仪表盘</span></div>
+                    </div>
+                </div>
+                <div class="topbar-right">
+                    <a href="/" class="btn btn-secondary btn-sm">← 返回首页</a>
+                </div>
+            </header>
+            
+            <div class="content-area">
+                <!-- 仪表盘模块 -->
+                <div class="module-content active" id="module-dashboard">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-card-header">
+                                <div class="stat-card-icon blue">👥</div>
+                            </div>
+                            <div class="stat-card-value" id="stat-users">--</div>
+                            <div class="stat-card-label">活跃用户</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-header">
+                                <div class="stat-card-icon green">📝</div>
+                            </div>
+                            <div class="stat-card-value" id="stat-translations">--</div>
+                            <div class="stat-card-label">今日翻译</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-header">
+                                <div class="stat-card-icon purple">⏳</div>
+                            </div>
+                            <div class="stat-card-value" id="stat-tasks">--</div>
+                            <div class="stat-card-label">进行中任务</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-header">
+                                <div class="stat-card-icon orange">💾</div>
+                            </div>
+                            <div class="stat-card-value" id="stat-storage">--</div>
+                            <div class="stat-card-label">存储使用</div>
+                        </div>
+                    </div>
+                    
+                    <div class="module-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">⏳ 活动任务</h3>
+                            <div class="panel-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="app.refreshTasks()">🔄 刷新</button>
+                            </div>
+                        </div>
+                        <div class="panel-body">
+                            <table class="data-table">
+                                <thead>
+                                    <tr><th>任务ID</th><th>用户</th><th>状态</th><th>进度</th><th>开始时间</th><th>操作</th></tr>
+                                </thead>
+                                <tbody id="tasks-table-body">
+                                    <tr><td colspan="6" style="text-align:center;color:#6b7280;">加载中...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 用户管理模块 -->
+                <div class="module-content" id="module-users">
+                    <div class="module-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">👥 用户列表</h3>
+                            <button class="btn btn-primary btn-sm" onclick="usersModule.showCreateUserModal()">➕ 添加用户</button>
+                        </div>
+                        <div class="panel-body">
+                            <table class="data-table">
+                                <thead>
+                                    <tr><th>用户名</th><th>角色</th><th>用户组</th><th>状态</th><th>创建时间</th><th>操作</th></tr>
+                                </thead>
+                                <tbody id="users-table-body">
+                                    <tr><td colspan="6" style="text-align:center;color:#6b7280;">加载中...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 用户组管理模块 -->
+                <div class="module-content" id="module-groups">
+                    <div class="module-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">👨‍👩‍👧‍👦 用户组列表</h3>
+                            <button class="btn btn-primary btn-sm" onclick="groupsModule.showCreateGroupModal()">➕ 创建用户组</button>
+                        </div>
+                        <div class="panel-body">
+                            <table class="data-table">
+                                <thead>
+                                    <tr><th>组名称</th><th>描述</th><th>成员数</th><th>允许的翻译器</th><th>配额</th><th>操作</th></tr>
+                                </thead>
+                                <tbody id="groups-table-body">
+                                    <tr><td colspan="6" style="text-align:center;color:#6b7280;">加载中...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 配额管理模块 -->
+                <div class="module-content" id="module-quota">
+                    <div class="module-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">📊 默认配额设置</h3>
+                        </div>
+                        <div class="panel-body">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="form-label">每日限制</label>
+                                    <input type="number" class="form-input" id="quota-daily-limit" value="100">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">每月限制</label>
+                                    <input type="number" class="form-input" id="quota-monthly-limit" value="3000">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">最大文件大小 (MB)</label>
+                                    <input type="number" class="form-input" id="quota-max-file-size" value="10">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">最大批量大小</label>
+                                    <input type="number" class="form-input" id="quota-max-batch-size" value="20">
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" onclick="quotaModule.saveDefaultQuota()">💾 保存配额设置</button>
+                        </div>
+                    </div>
+                    
+                    <div class="module-panel" style="margin-top:20px;">
+                        <div class="panel-header">
+                            <h3 class="panel-title">👥 用户配额使用情况</h3>
+                        </div>
+                        <div class="panel-body">
+                            <table class="data-table">
+                                <thead>
+                                    <tr><th>用户</th><th>用户组</th><th>今日使用</th><th>本月使用</th><th>操作</th></tr>
+                                </thead>
+                                <tbody id="user-quotas-table-body">
+                                    <tr><td colspan="5" style="text-align:center;color:#6b7280;">加载中...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 会话管理模块 -->
+                <div class="module-content" id="module-sessions">
+                    <div class="module-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">🔑 活跃会话</h3>
+                            <button class="btn btn-danger btn-sm" onclick="sessionsModule.revokeAllSessions()">撤销所有其他会话</button>
+                        </div>
+                        <div class="panel-body">
+                            <table class="data-table">
+                                <thead>
+                                    <tr><th>用户</th><th>Token</th><th>IP地址</th><th>设备</th><th>登录时间</th><th>操作</th></tr>
+                                </thead>
+                                <tbody id="sessions-table-body">
+                                    <tr><td colspan="6" style="text-align:center;color:#6b7280;">加载中...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 任务监控模块 -->
+                <div class="module-content" id="module-tasks">
+                    <div class="module-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">⏳ 任务列表 <span class="badge badge-info" id="tasks-count">0</span></h3>
+                            <div class="panel-actions">
+                                <button class="btn btn-primary btn-sm" id="auto-refresh-btn" onclick="tasksModule.toggleAutoRefresh()">⏸ 暂停刷新</button>
+                                <button class="btn btn-secondary btn-sm" onclick="tasksModule.loadTasks()">🔄 刷新</button>
+                                <button class="btn btn-danger btn-sm" onclick="tasksModule.cancelAllTasks()">取消全部</button>
+                            </div>
+                        </div>
+                        <div class="panel-body">
+                            <table class="data-table">
+                                <thead>
+                                    <tr><th>任务ID</th><th>用户</th><th>类型</th><th>状态</th><th>进度</th><th>开始时间</th><th>操作</th></tr>
+                                </thead>
+                                <tbody id="all-tasks-table-body">
+                                    <tr><td colspan="7" style="text-align:center;color:#6b7280;">加载中...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 历史记录模块 -->
+                <div class="module-content" id="module-history">
+                    <div class="module-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">📜 翻译历史</h3>
+                            <div class="panel-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="historyModule.loadHistory()">🔄 刷新</button>
+                                <button class="btn btn-danger btn-sm" onclick="historyModule.clearHistory()">清空历史</button>
+                            </div>
+                        </div>
+                        <div class="panel-body">
+                            <table class="data-table">
+                                <thead>
+                                    <tr><th>ID</th><th>用户</th><th>文件名</th><th>翻译器</th><th>状态</th><th>时间</th><th>操作</th></tr>
+                                </thead>
+                                <tbody id="history-table-body">
+                                    <tr><td colspan="7" style="text-align:center;color:#6b7280;">加载中...</td></tr>
+                                </tbody>
+                            </table>
+                            <div id="history-pagination" style="margin-top:16px;text-align:center;"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 系统日志模块 -->
+                <div class="module-content" id="module-logs">
+                    <div class="module-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">📋 系统日志</h3>
+                            <div class="panel-actions">
+                                <input type="text" id="session-filter-input" class="form-input" placeholder="会话ID过滤..." style="width:150px;font-size:12px;" onchange="logsModule.filterBySession(this.value)">
+                                <button class="btn btn-secondary btn-sm" onclick="logsModule.clearSessionFilter()" title="清除会话过滤">✕</button>
+                                <select class="form-select" style="width:auto;" onchange="logsModule.filterLogs(this.value)">
+                                    <option value="all">全部级别</option>
+                                    <option value="DEBUG">DEBUG</option>
+                                    <option value="INFO">INFO</option>
+                                    <option value="WARNING">WARNING</option>
+                                    <option value="ERROR">ERROR</option>
+                                </select>
+                                <button class="btn btn-secondary btn-sm" id="auto-scroll-btn" onclick="logsModule.toggleAutoScroll()">⏸ 暂停滚动</button>
+                                <button class="btn btn-secondary btn-sm" onclick="logsModule.downloadLogs()">📥 下载</button>
+                                <button class="btn btn-danger btn-sm" onclick="logsModule.clearLogs()">清空</button>
+                            </div>
+                        </div>
+                        <div class="panel-body">
+                            <div id="logs-container" class="logs-container" style="height:500px;overflow-y:auto;background:#1e1e1e;color:#d4d4d4;font-family:monospace;font-size:13px;padding:16px;border-radius:8px;">
+                                <div style="color:#6b7280;">加载中...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- API密钥管理模块 -->
+                <div class="module-content" id="module-envvars">
+                    <!-- 预设管理 -->
+                    <div class="module-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">📦 API密钥预设</h3>
+                            <div class="panel-actions">
+                                <button class="btn btn-primary btn-sm" onclick="envVarsModule.showCreatePresetModal()">➕ 创建预设</button>
+                                <button class="btn btn-secondary btn-sm" onclick="envVarsModule.loadPresets()">🔄 刷新</button>
+                            </div>
+                        </div>
+                        <div class="panel-body">
+                            <p style="color:#6b7280;margin-bottom:16px;">创建API密钥预设，可以分配给不同的用户组使用。用户组可以选择使用哪个预设的API密钥。</p>
+                            <div id="presets-list"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- 服务器默认API密钥 -->
+                    <div class="module-panel" style="margin-top:20px;">
+                        <div class="panel-header">
+                            <h3 class="panel-title">🔐 <span data-i18n="API Keys (.env)">服务器默认API密钥</span></h3>
+                            <div class="panel-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="envVarsModule.loadEnvVars()">🔄 刷新</button>
+                            </div>
+                        </div>
+                        <div class="panel-body">
+                            <p style="color:#6b7280;margin-bottom:16px;">服务器默认的API密钥配置（.env文件），当用户没有选择预设时使用。</p>
+                            <div id="server-env-groups"></div>
+                            <button class="btn btn-primary" onclick="envVarsModule.saveEnvVars()">💾 保存API密钥</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 服务器配置模块 -->
+                <div class="module-content" id="module-config">
+                    <div class="module-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">⚙️ 基本设置</h3>
+                        </div>
+                        <div class="panel-body">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="form-label">服务器名称</label>
+                                    <input type="text" class="form-input" id="config-server-name" value="Manga Translator">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">最大并发任务</label>
+                                    <input type="number" class="form-input" id="config-max-concurrent" value="3">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">任务超时 (秒)</label>
+                                    <input type="number" class="form-input" id="config-task-timeout" value="300">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">最大文件大小 (MB)</label>
+                                    <input type="number" class="form-input" id="config-max-file-size" value="10">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">允许的格式</label>
+                                    <input type="text" class="form-input" id="config-allowed-formats" value="jpg, png, webp">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">最大批量大小</label>
+                                    <input type="number" class="form-input" id="config-max-batch-size" value="20">
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-top:16px;">
+                                <label class="form-checkbox">
+                                    <input type="checkbox" id="config-allow-register">
+                                    <span>允许用户注册</span>
+                                </label>
+                                <p style="color:#6b7280;font-size:12px;margin:4px 0 0 24px;">开启后，用户可以在登录页面自行注册账户</p>
+                            </div>
+                            <div class="form-group" id="register-group-config" style="margin-left:24px;">
+                                <label style="font-size:14px;color:#374151;">注册用户默认分组</label>
+                                <select id="config-register-default-group" style="margin-top:4px;">
+                                    <option value="default">默认用户组 (default)</option>
+                                </select>
+                                <p style="color:#6b7280;font-size:12px;margin-top:4px;">新注册用户将自动加入此用户组，继承该组的权限配置</p>
+                            </div>
+                            <button class="btn btn-primary" onclick="configModule.saveServerConfig()">💾 保存设置</button>
+                        </div>
+                    </div>
+                    
+                    <div class="module-panel" style="margin-top:20px;">
+                        <div class="panel-header">
+                            <h3 class="panel-title">🔤 服务器字体管理</h3>
+                            <div class="panel-actions">
+                                <input type="file" id="admin-font-upload" accept=".ttf,.otf,.ttc" style="display:none;" onchange="configModule.uploadServerFont(this)">
+                                <button class="btn btn-primary btn-sm" onclick="document.getElementById('admin-font-upload').click()">📤 上传字体</button>
+                            </div>
+                        </div>
+                        <div class="panel-body">
+                            <p style="color:#6b7280;margin-bottom:16px;">管理服务器共享字体（所有用户可用）</p>
+                            <div id="server-font-list" style="display:grid;gap:8px;">加载中...</div>
+                        </div>
+                    </div>
+                    
+                    <div class="module-panel" style="margin-top:20px;">
+                        <div class="panel-header">
+                            <h3 class="panel-title">📝 服务器提示词管理</h3>
+                            <div class="panel-actions">
+                                <input type="file" id="admin-prompt-upload" accept=".json" style="display:none;" onchange="configModule.uploadServerPrompt(this)">
+                                <button class="btn btn-primary btn-sm" onclick="document.getElementById('admin-prompt-upload').click()">📤 上传提示词</button>
+                            </div>
+                        </div>
+                        <div class="panel-body">
+                            <p style="color:#6b7280;margin-bottom:16px;">管理服务器共享提示词（所有用户可用）</p>
+                            <div id="server-prompt-list" style="display:grid;gap:8px;">加载中...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 公告管理模块 -->
+                <div class="module-content" id="module-announcement">
+                    <div class="module-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">📢 公告设置</h3>
+                        </div>
+                        <div class="panel-body">
+                            <div class="form-group">
+                                <label class="form-checkbox">
+                                    <input type="checkbox" id="announcement-enabled" onchange="announcementModule.updatePreview()">
+                                    <span>启用公告</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">公告类型</label>
+                                <select class="form-select" id="announcement-type" onchange="announcementModule.updatePreview()">
+                                    <option value="info">信息 (蓝色)</option>
+                                    <option value="warning">警告 (黄色)</option>
+                                    <option value="error">错误 (红色)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">公告内容</label>
+                                <textarea class="form-input" id="announcement-message" rows="3" placeholder="输入公告内容..." oninput="announcementModule.updatePreview()"></textarea>
+                            </div>
+                            <div id="announcement-preview" style="display:none;"></div>
+                            <div style="margin-top:16px;">
+                                <button class="btn btn-primary" onclick="announcementModule.saveAnnouncement()">💾 保存公告</button>
+                                <button class="btn btn-secondary" onclick="announcementModule.clearAnnouncement()">清除公告</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 清理管理模块 -->
+                <div class="module-content" id="module-cleanup">
+                    <div class="module-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">💾 存储使用情况</h3>
+                            <button class="btn btn-secondary btn-sm" onclick="cleanupModule.loadStorageInfo()">🔄 刷新</button>
+                        </div>
+                        <div class="panel-body">
+                            <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);">
+                                <div class="stat-card">
+                                    <div class="stat-card-value" id="storage-uploads">--</div>
+                                    <div class="stat-card-label">上传目录 (<span id="files-uploads">0</span> 文件)</div>
+                                    <button class="btn btn-danger btn-sm" style="margin-top:8px;" onclick="cleanupModule.cleanupUploads()">清理</button>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-card-value" id="storage-results">--</div>
+                                    <div class="stat-card-label">结果目录 (<span id="files-results">0</span> 文件)</div>
+                                    <button class="btn btn-danger btn-sm" style="margin-top:8px;" onclick="cleanupModule.cleanupResults()">清理</button>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-card-value" id="storage-cache">--</div>
+                                    <div class="stat-card-label">缓存目录 (<span id="files-cache">0</span> 文件)</div>
+                                    <button class="btn btn-danger btn-sm" style="margin-top:8px;" onclick="cleanupModule.cleanupCache()">清理</button>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-card-value" id="storage-total">--</div>
+                                    <div class="stat-card-label">总计</div>
+                                    <button class="btn btn-danger btn-sm" style="margin-top:8px;" onclick="cleanupModule.cleanupAll()">清理全部</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="module-panel" style="margin-top:20px;">
+                        <div class="panel-header">
+                            <h3 class="panel-title">🧹 自动清理设置</h3>
+                        </div>
+                        <div class="panel-body">
+                            <div class="form-group">
+                                <label class="form-checkbox">
+                                    <input type="checkbox" id="cleanup-auto-enabled">
+                                    <span>启用自动清理</span>
+                                </label>
+                            </div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="form-label">清理间隔 (小时)</label>
+                                    <input type="number" class="form-input" id="cleanup-interval" value="24">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">文件最大保留天数</label>
+                                    <input type="number" class="form-input" id="cleanup-max-age" value="7">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">最大存储空间 (GB)</label>
+                                    <input type="number" class="form-input" id="cleanup-max-size" value="10">
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" onclick="cleanupModule.saveCleanupSettings()">💾 保存设置</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- 脚本 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="/static/js/i18n.js?v=4"></script>
+    <script src="/static/js/shared/api-key-schema.js?v=1"></script>
+    <script src="/static/js/admin/components/permission-editor.js?v=7"></script>
+    <script src="/static/js/admin/app.js?v=3"></script>
+    <script src="/static/js/admin/modules/users.js?v=5"></script>
+    <script src="/static/js/admin/modules/groups.js?v=5"></script>
+    <script src="/static/js/admin/modules/quota.js?v=2"></script>
+    <script src="/static/js/admin/modules/tasks.js?v=2"></script>
+    <script src="/static/js/admin/modules/history.js?v=3"></script>
+    <script src="/static/js/admin/modules/logs.js?v=3"></script>
+    <script src="/static/js/admin/modules/config.js?v=4"></script>
+    <script src="/static/js/admin/modules/envvars.js?v=6"></script>
+    <script src="/static/js/admin/modules/announcement.js?v=2"></script>
+    <script src="/static/js/admin/modules/cleanup.js?v=2"></script>
+    <script src="/static/js/admin/modules/sessions.js?v=3"></script>
+    <script>
+        // 初始化应用
+        async function initAdmin() {
+            // 先加载i18n翻译文件
+            await window.i18n.load();
+            
+            const app = new AdminApp();
+            const usersModule = new UsersModule(app);
+            const groupsModule = new GroupsModule(app);
+            const quotaModule = new QuotaModule(app);
+            const tasksModule = new TasksModule(app);
+            const historyModule = new HistoryModule(app);
+            const logsModule = new LogsModule(app);
+            const configModule = new ConfigModule(app);
+            const envVarsModule = new EnvVarsModule(app);
+            const announcementModule = new AnnouncementModule(app);
+            const cleanupModule = new CleanupModule(app);
+            const sessionsModule = new SessionsModule(app);
+            
+            // 暴露到全局
+            window.app = app;
+            window.usersModule = usersModule;
+            window.groupsModule = groupsModule;
+            window.quotaModule = quotaModule;
+            window.tasksModule = tasksModule;
+            window.historyModule = historyModule;
+            window.logsModule = logsModule;
+            window.configModule = configModule;
+            window.envVarsModule = envVarsModule;
+            window.announcementModule = announcementModule;
+            window.cleanupModule = cleanupModule;
+            window.sessionsModule = sessionsModule;
+            
+            // 注册模块
+            app.registerModule('users', usersModule);
+            app.registerModule('groups', groupsModule);
+            app.registerModule('quota', quotaModule);
+            app.registerModule('tasks', tasksModule);
+            app.registerModule('history', historyModule);
+            app.registerModule('logs', logsModule);
+            app.registerModule('config', configModule);
+            app.registerModule('envvars', envVarsModule);
+            app.registerModule('announcement', announcementModule);
+            app.registerModule('cleanup', cleanupModule);
+            app.registerModule('sessions', sessionsModule);
+            
+            // 启动应用
+            app.init();
+        }
+        
+        initAdmin();
+    </script>
+</body>
+</html>

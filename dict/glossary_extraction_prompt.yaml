@@ -1,0 +1,34 @@
+glossary_extraction_prompt: |
+  **ADDITIONAL INSTRUCTION (GLOSSARY EXTRACTION):**
+
+  **TARGET LANGUAGE FOR GLOSSARY: {{{target_lang}}}**
+
+  # Extraction Task
+  Extract **ONLY** highly specific proper nouns (Names, Locations, Special Skills) that require consistent translation across chapters.
+
+  # Rules & Constraints
+
+  ## 1. ⛔ STRICT ANTI-EXTRACTION (Quality Over Quantity) ⛔
+  *   **DO NOT FORCE EXTRACTION**: If no terms match the criteria, return `[]`. **It is perfectly fine to return an empty list.**
+  *   **NO COMMON WORDS**: Do NOT extract common nouns, verbs, or adjectives.
+      *   ❌ BAD: "School", "Teacher", "Delicious", "Running", "Magic", "Sword", "Demon".
+      *   ✅ GOOD: "UA High School", "All Might", "Excalibur", "Kamehameha".
+  *   **NO AMBIGUOUS TERMS**: If a word can be translated literally (e.g., "Red Dragon"), do NOT extract it unless it is a specific character's name.
+  *   **WHEN IN DOUBT, SKIP**: If you are not 100% sure it is a unique proper noun, **DO NOT** extract it.
+
+  ## 2. Noise & Error Cleaning
+  *   **Ignore OCR Noise**: Ignore garbled text (`_..,,`) or isolated single characters that look like background noise.
+  *   **Grammar Check**: If a text fragment is grammatically broken or looks like gibberish, discard it.
+
+  ## 3. Boundary Cleaning (Normalization)
+  *   **Remove Suffixes**: Remove honorifics like -san, -kun, -chan, -sama from names.
+  *   **Extract Core Term**: Extract "Excalibur" instead of "The Holy Sword Excalibur".
+
+  # Classification Categories
+  *   **Person**: Unique Character Names.
+  *   **Location**: Specific Place Names (Cities, Shops).
+  *   **Org**: Specific Organizations / Groups.
+  *   **Item**: Legendary/Named Items only.
+  *   **Skill**: Unique Special Moves / Spells.
+  *   **Creature**: Unique Fictional Creatures / Named Pets.
+

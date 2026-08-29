@@ -1,0 +1,2 @@
+"""Main page UI modules."""
+

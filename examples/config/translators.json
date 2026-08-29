@@ -1,0 +1,67 @@
+{
+  "none": {
+    "name": "none",
+    "display_name": "不翻译",
+    "required_env_vars": []
+  },
+  "original": {
+    "name": "original",
+    "display_name": "保留原文",
+    "required_env_vars": []
+  },
+  "openai": {
+    "name": "openai",
+    "display_name": "OpenAI",
+    "required_env_vars": [],
+    "optional_env_vars": [
+      "OPENAI_API_KEY",
+      "OPENAI_MODEL",
+      "OPENAI_API_BASE"
+    ],
+    "validation_rules": {
+      "OPENAI_API_KEY": "^sk-[a-zA-Z0-9]{48}$"
+    }
+  },
+  "openai_hq": {
+    "name": "openai_hq",
+    "display_name": "高质量翻译 OpenAI",
+    "required_env_vars": [],
+    "optional_env_vars": [
+      "OPENAI_API_KEY",
+      "OPENAI_MODEL",
+      "OPENAI_API_BASE"
+    ],
+    "validation_rules": {
+      "OPENAI_API_KEY": "^sk-[a-zA-Z0-9]{48}$"
+    }
+  },
+  "gemini": {
+    "name": "gemini",
+    "display_name": "Google Gemini",
+    "required_env_vars": [],
+    "optional_env_vars": [
+      "GEMINI_API_KEY",
+      "GEMINI_MODEL",
+      "GEMINI_API_BASE"
+    ]
+  },
+  "gemini_hq": {
+    "name": "gemini_hq",
+    "display_name": "高质量翻译 Gemini",
+    "required_env_vars": [],
+    "optional_env_vars": [
+      "GEMINI_API_KEY",
+      "GEMINI_MODEL",
+      "GEMINI_API_BASE"
+    ]
+  },
+  "sakura": {
+    "name": "sakura",
+    "display_name": "Sakura",
+    "required_env_vars": [],
+    "optional_env_vars": [
+      "SAKURA_API_BASE",
+      "SAKURA_DICT_PATH"
+    ]
+  }
+}

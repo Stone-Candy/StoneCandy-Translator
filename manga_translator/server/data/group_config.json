@@ -1,0 +1,266 @@
+{
+  "version": "1.0",
+  "groups": {
+    "admin": {
+      "name": "管理员组",
+      "description": "拥有所有权限的管理员用户组",
+      "parameter_config": {
+        "translator": {
+          "translator": "vertex_hq",
+          "target_lang": "CHS",
+          "keep_lang": "none",
+          "high_quality_prompt_path": "dict/wyxxl.json",
+          "extract_glossary": true,
+          "enable_streaming": false,
+          "no_text_lang_skip": false,
+          "max_requests_per_minute": 0
+        },
+        "ocr": {
+          "ocr": "48px",
+          "secondary_ocr": "mocr",
+          "use_hybrid_ocr": true,
+          "min_text_length": 0,
+          "ignore_bubble": 0,
+          "use_model_bubble_filter": false,
+          "model_bubble_overlap_threshold": 0.1,
+          "use_model_bubble_repair_intersection": false,
+          "limit_mask_dilation_to_bubble_mask": true,
+          "prob": 0.1,
+          "merge_gamma": 0.8,
+          "merge_sigma": 2.5,
+          "merge_edge_ratio_threshold": 0,
+          "merge_special_require_full_wrap": true,
+          "ocr_vl_language_hint": "Japanese",
+          "ocr_vl_custom_prompt": ""
+        },
+        "detector": {
+          "detector": "default",
+          "detection_size": 2048,
+          "text_threshold": 0.5,
+          "box_threshold": 0.5,
+          "unclip_ratio": 2.5,
+          "min_box_area_ratio": 0,
+          "use_yolo_obb": true,
+          "yolo_obb_conf": 0.4,
+          "yolo_obb_overlap_threshold": 0.1
+        },
+        "cli": {
+          "format": "不指定",
+          "save_quality": 100,
+          "overwrite": "always",
+          "skip_no_text": false,
+          "save_text": true,
+          "attempts": 3,
+          "ignore_errors": false,
+          "context_size": 3,
+          "batch_size": 3,
+          "use_gpu": true,
+          "disable_onnx_gpu": false
+        },
+        "inpainter": {
+          "inpainter": "lama_large",
+          "inpainting_size": 2048,
+          "inpainting_precision": "fp32",
+          "force_use_torch_inpainting": false
+        },
+        "upscale": {
+          "upscaler": "mangajanai",
+          "upscale_ratio": null,
+          "revert_upscaling": false,
+          "tile_size": 400,
+          "mangajanai_model": null
+        },
+        "colorizer": {
+          "colorizer": "none",
+          "colorization_size": 2048,
+          "denoise_sigma": 30
+        },
+        "_global": {
+          "kernel_size": null,
+          "mask_dilation_offset": null
+        },
+        "render": {
+          "renderer": "default",
+          "alignment": "auto",
+          "direction": "auto",
+          "layout_mode": "smart_scaling",
+          "font_path": "fonts/1华康中黑体-平常对话.TTF",
+          "font_size": null,
+          "font_size_offset": 0,
+          "font_size_minimum": 0,
+          "max_font_size": 0,
+          "font_scale_ratio": 1,
+          "font_color": "",
+          "line_spacing": 1,
+          "letter_spacing": 1,
+          "stroke_width": 0.07,
+          "uppercase": false,
+          "lowercase": false,
+          "disable_font_border": false,
+          "disable_auto_wrap": true,
+          "rtl": true,
+          "no_hyphenation": false,
+          "auto_rotate_symbols": false,
+          "center_text_in_bubble": false,
+          "optimize_line_breaks": true,
+          "check_br_and_retry": true,
+          "strict_smart_scaling": true
+        },
+        "quota": {
+          "daily_image_limit": 100,
+          "daily_char_limit": 100000,
+          "max_concurrent_tasks": 3,
+          "max_batch_size": 20,
+          "max_image_size_mb": 10,
+          "max_images_per_batch": 50
+        },
+        "permissions": {
+          "show_env_editor": true,
+          "allow_server_keys": false,
+          "require_user_keys": false,
+          "save_user_keys_to_server": false,
+          "can_upload_fonts": true,
+          "can_delete_fonts": true,
+          "can_upload_prompts": true,
+          "can_delete_prompts": true,
+          "can_use_batch": true,
+          "can_use_api": true,
+          "can_export_text": true,
+          "can_view_history": true,
+          "can_view_logs": false
+        }
+      },
+      "allowed_translators": [
+        "*"
+      ],
+      "denied_translators": [],
+      "allowed_ocr": [
+        "*"
+      ],
+      "denied_ocr": [],
+      "allowed_colorizers": [
+        "*"
+      ],
+      "denied_colorizers": [],
+      "allowed_renderers": [
+        "*"
+      ],
+      "denied_renderers": [],
+      "allowed_workflows": [
+        "*"
+      ],
+      "denied_workflows": [],
+      "visible_presets": []
+    },
+    "default": {
+      "name": "默认用户组",
+      "description": "新用户的默认用户组",
+      "parameter_config": {
+        "translator": {
+          "translator": "openai_hq",
+          "target_lang": "CHS",
+          "high_quality_prompt_path": "dict/prompt_example.yaml",
+          "max_requests_per_minute": 0
+        },
+        "ocr": {
+          "ocr": "48px",
+          "secondary_ocr": "mocr",
+          "use_hybrid_ocr": false,
+          "min_text_length": 0,
+          "limit_mask_dilation_to_bubble_mask": false
+        },
+        "detector": {
+          "detector": "default",
+          "detection_size": 2048,
+          "text_threshold": 0.5
+        },
+        "cli": {
+          "format": "不指定",
+          "save_quality": 100,
+          "overwrite": "skip",
+          "skip_no_text": true,
+          "save_text": true,
+          "attempts": 3,
+          "ignore_errors": false,
+          "context_size": 3,
+          "batch_size": 3,
+          "use_gpu": true,
+          "use_gpu_limited": false
+        },
+        "inpainter": {
+          "inpainter": "lama_large",
+          "inpainting_size": 2048,
+          "inpainting_precision": "fp32"
+        },
+        "upscale": {
+          "upscaler": "realcugan",
+          "upscale_ratio": "不使用",
+          "revert_upscaling": false,
+          "tile_size": 600
+        },
+        "colorizer": {
+          "colorizer": "none",
+          "colorization_size": 2048,
+          "denoise_sigma": 30
+        },
+        "render": {
+          "renderer": "default",
+          "alignment": "auto",
+          "direction": "auto",
+          "layout_mode": "smart_scaling",
+          "font_path": "fonts/Arial-Unicode-Regular.ttf",
+          "font_size": null,
+          "font_size_offset": 0,
+          "font_size_minimum": 0,
+          "max_font_size": 0,
+          "uppercase": false,
+          "lowercase": false,
+          "disable_font_border": false,
+          "disable_auto_wrap": false,
+          "rtl": true
+        },
+        "quota": {
+          "daily_image_limit": 100,
+          "daily_char_limit": 100000,
+          "max_concurrent_tasks": 1,
+          "max_batch_size": 20,
+          "max_image_size_mb": 10,
+          "max_images_per_batch": 50
+        },
+        "permissions": {
+          "can_upload_fonts": true,
+          "can_delete_fonts": true,
+          "can_upload_prompts": true,
+          "can_delete_prompts": true,
+          "can_use_batch": true,
+          "can_use_api": true,
+          "can_export_text": true,
+          "can_view_history": true,
+          "can_view_logs": false
+        },
+        "parameter_config": {
+          "cli.attempts": {
+            "disabled": true,
+            "default_value": 3
+          }
+        }
+      },
+      "allowed_translators": [
+        "*"
+      ],
+      "denied_translators": [],
+      "allowed_workflows": [
+        "normal"
+      ],
+      "denied_workflows": [
+        "export_trans",
+        "export_raw",
+        "import_trans",
+        "colorize",
+        "upscale",
+        "inpaint"
+      ],
+      "visible_presets": []
+    }
+  }
+}

@@ -1,0 +1,156 @@
+[ko_KR]
+현재의 폴더 위치는 "원본폴더"의 하위 폴더입니다. 
+
+1. 
+combined_script.txt 파일을 번역 완료한 후 같은 파일로 덮어쓴 이후에
+"TXT 가져온 후 번역 완료 B"모드를 실행하면 
+출력 폴더에 번역된 이미지가 저장됩니다.
+
+2.
+A-B 진행 과정 도중에 폴더 경로를 바꾸면 안 됩니다.
+백업본을 만들어두면 번역 재시도가 편해집니다. (옵션에서 자동 생성 가능)
+
+
+3.
+번역은 파파고 등 어떤 방법으로도 가능하지만, 
+LLM을 사용할 경우 추천 프롬프트는 아래와 같습니다. ↓↓↓
+(ChatGPT, Grok, Claude 모두 가능합니다.)
+
+
+이 파일에서 [P####T####R]이라고 적힌 부분은 그대로 두고
+나머지를 전부 한국어로 번역해서
+다운로드 가능한 파일로만 줘.
+번역 내용은 채팅창에 쓰지 말고 파일로만 제공해.
+
+
+[/ko_KR]
+[en_US]
+This folder is a subfolder of the "original folder".
+
+1.
+After you finish translating combined_script.txt and overwrite the same file,
+run the "Import Translation and Render B" mode.
+The translated images will be saved in the output folder.
+
+2.
+Do not change the folder path during the A-B process.
+Keeping a backup makes retrying translation easier. (Can be created automatically in Options)
+
+
+3.
+You can translate with any method, including Papago,
+but if you use an LLM, the recommended prompt is below. ↓↓↓
+(Works with ChatGPT, Grok, and Claude.)
+
+
+Leave the parts marked [P####T####R] in this file as they are
+and translate everything else into English.
+Give me only a downloadable file.
+Do not put the translation in the chat — provide it as a file only.
+
+
+[/en_US]
+[ja_JP]
+現在のフォルダ位置は「原本フォルダ」の下位フォルダです。
+
+1.
+combined_script.txt の翻訳を終えて同じファイルに上書きしたあと、
+「翻訳をインポートしてレンダリング B」モードを実行すると
+出力フォルダに翻訳済み画像が保存されます。
+
+2.
+A-B 進行中にフォルダパスを変更しないでください。
+バックアップを作っておくと翻訳の再試行が楽になります。（オプションで自動生成可能）
+
+
+3.
+翻訳はPapagoなどどの方法でも可能ですが、
+LLMを使う場合の推奨プロンプトは以下です。 ↓↓↓
+（ChatGPT、Grok、Claude すべて使用できます。）
+
+
+このファイルで [P####T####R] と書かれた部分はそのまま残し、
+それ以外をすべて日本語に翻訳して
+ダウンロード可能なファイルだけで渡してください。
+翻訳内容はチャット欄に書かず、ファイルでのみ提供してください。
+
+
+[/ja_JP]
+[zh_CN]
+当前文件夹位于“原文件夹”的子文件夹中。
+
+1.
+完成 combined_script.txt 的翻译并用同一文件覆盖保存后，
+运行“导入翻译并渲染 B”模式，
+翻译后的图像会保存到输出文件夹。
+
+2.
+A-B 进行过程中请不要更改文件夹路径。
+事先做好备份，重试翻译会更方便。（可在选项中自动生成）
+
+
+3.
+翻译可以用Papago等任何方式，
+但如果使用 LLM，推荐提示词如下。 ↓↓↓
+（ChatGPT、Grok、Claude 均可使用。）
+
+
+请保留本文件中标记为 [P####T####R] 的部分不要改动，
+将其余内容全部翻译成简体中文，
+只以可下载的文件形式给我。
+不要把译文写在聊天窗口里，只以文件提供。
+
+
+[/zh_CN]
+[zh_TW]
+目前的資料夾位置是「原始資料夾」的子資料夾。
+
+1.
+完成 combined_script.txt 的翻譯並以同一個檔案覆蓋儲存後，
+執行「匯入翻譯並渲染 B」模式，
+翻譯後的圖像會儲存到輸出資料夾。
+
+2.
+A-B 進行過程中請不要更改資料夾路徑。
+事先做好備份，重試翻譯會更方便。（可在選項中自動產生）
+
+
+3.
+翻譯可以用Papago等任何方式，
+但如果使用 LLM，建議提示詞如下。 ↓↓↓
+（ChatGPT、Grok、Claude 均可使用。）
+
+
+請保留本檔案中標記為 [P####T####R] 的部分不要改動，
+將其餘內容全部翻譯成繁體中文，
+只以可下載的檔案形式給我。
+不要把譯文寫在聊天視窗裡，只以檔案提供。
+
+
+[/zh_TW]
+[es_ES]
+La carpeta actual es una subcarpeta de la «carpeta original».
+
+1.
+Tras terminar de traducir combined_script.txt y sobrescribir el mismo archivo,
+ejecuta el modo «Importar Traducción y Renderizar B».
+Las imágenes traducidas se guardarán en la carpeta de salida.
+
+2.
+No cambies la ruta de la carpeta durante el proceso A-B.
+Tener una copia de seguridad facilita reintentar la traducción. (Se puede generar automáticamente en Opciones)
+
+
+3.
+Puedes traducir con cualquier método, como Papago,
+pero si usas un LLM, el prompt recomendado es el siguiente. ↓↓↓
+(Funciona con ChatGPT, Grok y Claude.)
+
+
+Deja intactas las partes marcadas como [P####T####R] en este archivo
+y traduce todo lo demás al español.
+Entrégamelo solo como un archivo descargable.
+No pongas la traducción en el chat; proporciónala solo como archivo.
+
+
+[/es_ES]

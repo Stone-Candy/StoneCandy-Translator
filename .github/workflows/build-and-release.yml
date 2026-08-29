@@ -1,0 +1,262 @@
+name: Build, Release, and Publish Updates
+
+on:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types:
+      - published
+  workflow_dispatch:
+
+jobs:
+  build-cpu:
+    runs-on: windows-latest
+    name: Build CPU Version
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements_cpu.txt
+        pip install pyinstaller
+    - name: Build CPU version
+      run: python packaging/build_packages.py "${{ github.ref_name }}" --build cpu
+    - name: Upload CPU artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: manga-translator-cpu
+        path: dist/manga-translator-cpu/
+
+  build-gpu:
+    runs-on: windows-latest
+    name: Build GPU Version
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements_gpu.txt
+        pip install pyinstaller
+    - name: Build GPU version
+      run: python packaging/build_packages.py "${{ github.ref_name }}" --build gpu
+    - name: Upload GPU artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: manga-translator-gpu
+        path: dist/manga-translator-gpu/
+
+  release-and-publish:
+    needs: [build-cpu, build-gpu]
+    runs-on: ubuntu-latest
+    name: Create Release and Publish Updates
+    permissions:
+      contents: write # Required to push to gh-pages branch
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download and Extract GPU Models
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        echo "Downloading GPU models from release assets..."
+        gh release download v1.6.0 -p "models.7z"
+
+        echo "Decompressing GPU models..."
+        7z x "models.7z" -o./extracted_models_gpu
+
+        echo "Setting up GPU models directory..."
+        rm -rf ./models_gpu
+        mv ./extracted_models_gpu/models ./models_gpu
+        echo "GPU models ready."
+
+    - name: Download and Extract CPU Models
+      run: |
+        echo "Downloading CPU models from v1.7.9..."
+        curl -L -o models_cpu.7z https://github.com/hgmzhn/manga-translator-ui/releases/download/v1.7.9/models.7z
+
+        echo "Decompressing CPU models..."
+        7z x "models_cpu.7z" -o./extracted_models_cpu
+
+        echo "Setting up CPU models directory..."
+        rm -rf ./models_cpu
+        mv ./extracted_models_cpu/models ./models_cpu
+        echo "CPU models ready."
+
+    # - name: Restore Previous TUF Assets
+    #   env:
+    #     GH_TOKEN: ${{ github.token }}
+    #   run: |
+    #     echo "Checking for previous release to restore assets for diffing..."
+    #     # Get the tag of the release before this one
+    #     PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+    #     if [ -z "$PREVIOUS_TAG" ]; then
+    #       echo "No previous tag found. Assuming this is the first release. Skipping asset restore."
+    #       exit 0
+    #     fi
+    #     echo "Found previous release tag: $PREVIOUS_TAG"
+    #     
+    #     TUF_TARGETS_DIR="update_repository/targets"
+    #     mkdir -p $TUF_TARGETS_DIR
+
+    #     echo "Downloading assets from release $PREVIOUS_TAG..."
+    #     gh release download $PREVIOUS_TAG -D $TUF_TARGETS_DIR -p "*.tar.gz.7z.*" || true
+    #     
+    #     echo "Merging split archives..."
+    #     for f in $(find $TUF_TARGETS_DIR -name '*.tar.gz.7z.001'); do
+    #       echo "Merging $f..."
+    #       # The `e` command extracts and automatically merges multi-part archives
+    #       7z e -o"$TUF_TARGETS_DIR" "$f"
+    #       # Clean up the downloaded split parts
+    #       rm $f*
+    #     done
+    #     echo "Asset restoration complete. Final files in $TUF_TARGETS_DIR:"
+    #     ls -l $TUF_TARGETS_DIR
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install 7-Zip
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y p7zip-full
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: dist/
+
+    # - name: Restore TUF Private Keys
+    #   env:
+    #     TUF_ROOT_KEY: ${{ secrets.TUF_ROOT_KEY }}
+    #     TUF_TARGETS_KEY: ${{ secrets.TUF_TARGETS_KEY }}
+    #     TUF_SNAPSHOT_KEY: ${{ secrets.TUF_SNAPSHOT_KEY }}
+    #     TUF_TIMESTAMP_KEY: ${{ secrets.TUF_TIMESTAMP_KEY }}
+    #   run: |
+    #     echo "Restoring TUF private keys from secrets..."
+    #     KEYS_DIR="keys"
+    #     mkdir -p $KEYS_DIR
+    #     echo "$TUF_ROOT_KEY" > "$KEYS_DIR/root"
+    #     echo "$TUF_TARGETS_KEY" > "$KEYS_DIR/targets"
+    #     echo "$TUF_SNAPSHOT_KEY" > "$KEYS_DIR/snapshot"
+    #     echo "$TUF_TIMESTAMP_KEY" > "$KEYS_DIR/timestamp"
+    #     echo "Private keys restored."
+
+    # - name: Update TUF Repository
+    #   run: |
+    #     python build_packages.py ${{ github.ref_name }} --update-repo --skip-build
+
+    # - name: Verify TUF metadata
+    #   run: |
+    #     echo "Verifying contents of update_repository before deployment:"
+    #     ls -lR update_repository/
+
+    # - name: Deploy Repository to GitHub Pages
+    #   uses: peaceiris/actions-gh-pages@v3
+    #   with:
+    #     personal_token: ${{ secrets.GH_PAT }}
+    #     publish_dir: ./update_repository
+    #     publish_branch: gh-pages
+    #     user_name: 'github-actions[bot]'
+    #     user_email: 'github-actions[bot]@users.noreply.github.com'
+    #     commit_message: 'Deploy TUF repository for ${{ github.ref_name }}'
+    #     exclude_assets: '**/*.tar.gz'
+
+    - name: Bundle extra directories into _internal
+      run: |
+        echo "Bundling extra directories into _internal..."
+        APP_VERSION="${GITHUB_REF_NAME#v}"
+        echo "Embedding app version: ${APP_VERSION}"
+        mkdir -p dist/manga-translator-cpu/_internal
+        mkdir -p dist/manga-translator-gpu/_internal
+        
+        cp -r examples dist/manga-translator-cpu/_internal/
+        cp -r fonts dist/manga-translator-cpu/_internal/
+        cp -r models_cpu dist/manga-translator-cpu/_internal/models
+        cp -r dict dist/manga-translator-cpu/_internal/
+        cp -r doc dist/manga-translator-cpu/_internal/
+        mkdir -p dist/manga-translator-cpu/_internal/desktop_qt_ui
+        cp -r desktop_qt_ui/locales dist/manga-translator-cpu/_internal/desktop_qt_ui/locales
+        cp -r desktop_qt_ui/ui dist/manga-translator-cpu/_internal/desktop_qt_ui/ui
+        printf '%s\n' "$APP_VERSION" > dist/manga-translator-cpu/_internal/VERSION
+
+        cp -r examples dist/manga-translator-gpu/_internal/
+        cp -r fonts dist/manga-translator-gpu/_internal/
+        cp -r models_gpu dist/manga-translator-gpu/_internal/models
+        cp -r dict dist/manga-translator-gpu/_internal/
+        cp -r doc dist/manga-translator-gpu/_internal/
+        mkdir -p dist/manga-translator-gpu/_internal/desktop_qt_ui
+        cp -r desktop_qt_ui/locales dist/manga-translator-gpu/_internal/desktop_qt_ui/locales
+        cp -r desktop_qt_ui/ui dist/manga-translator-gpu/_internal/desktop_qt_ui/ui
+        printf '%s\n' "$APP_VERSION" > dist/manga-translator-gpu/_internal/VERSION
+
+    - name: Create Release Archives using 7-Zip with Splitting
+      run: |
+        mkdir -p release_assets
+        echo "Archiving CPU version..."
+        cd dist/manga-translator-cpu/
+        7z a -v1990m -m0=lzma2 -ms=on ../../release_assets/manga-translator-cpu-${{ github.ref_name }}.7z .
+        cd ../../
+        echo "CPU version archived. Deleting source directory to save space..."
+        rm -rf dist/manga-translator-cpu
+        echo "Archiving GPU version..."
+        cd dist/manga-translator-gpu/
+        7z a -v1990m -m0=lzma2 -ms=on ../../release_assets/manga-translator-gpu-${{ github.ref_name }}.7z .
+        cd ../../
+        echo "GPU version archived. Deleting source directory to save space..."
+        rm -rf dist/manga-translator-gpu
+
+    # - name: Prepare TUF Assets for Release
+    #   run: |
+    #     echo "Preparing TUF assets..."
+    #     TUF_TARGETS_DIR="update_repository/targets"
+    #     RELEASE_ASSETS_DIR="release_assets"
+    #     # Copy any TUF assets that are small enough directly
+    #     find $TUF_TARGETS_DIR -type f -size -1990M -exec cp {} $RELEASE_ASSETS_DIR/ \;
+    #     # For TUF assets that are too large, create split archives
+    #     find $TUF_TARGETS_DIR -type f -size +1990M | while read f; do
+    #       echo "Splitting large TUF asset: $f"
+    #       7z a -v1990m "$RELEASE_ASSETS_DIR/$(basename "$f").7z" "$f"
+    #     done
+    #     echo "Final release assets list:"
+    #     ls -l $RELEASE_ASSETS_DIR
+
+    - name: Read CHANGELOG
+      id: changelog
+      run: |
+        set -Eeuo pipefail
+        VERSION=$(echo "${{ github.ref_name }}" | sed 's/^v//')
+        CHANGELOG_FILE="doc/CHANGELOG_v${VERSION}.md"
+        if [ -f "$CHANGELOG_FILE" ]; then
+          DELIM="END_OF_CHANGELOG_${GITHUB_RUN_ID}_${RANDOM}"
+          {
+            printf 'changelog<<%s\n' "$DELIM"
+            sed -e '$a\' "$CHANGELOG_FILE"
+            printf '%s\n' "$DELIM"
+          } >> "$GITHUB_OUTPUT"
+        else
+          printf 'changelog=%s\n' "未找到更新日志文件" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        body: ${{ steps.changelog.outputs.changelog }}
+        files: release_assets/*
+        draft: false
+        prerelease: false

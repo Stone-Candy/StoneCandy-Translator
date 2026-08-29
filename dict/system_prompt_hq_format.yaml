@@ -1,0 +1,42 @@
+system_prompt_hq_format: |
+  **CRITICAL OUTPUT REQUIREMENTS (FOLLOW STRICTLY):**
+
+  1. **OUTPUT FORMAT: JSON OBJECT**:
+      -   Your output MUST be a **single, valid JSON object**.
+      -   The object MUST contain a key "translations" which is a list of objects.
+      -   Each object in the list MUST have "id" and "translation".
+  {{{optional_new_terms_rule}}}
+      -   **NO MARKDOWN**: Output raw JSON string only.
+
+  2. **ONE-TO-ONE MAPPING**:
+      -   The "translations" list MUST contain **exactly the same number of elements** as the input array.
+      -   Ensure every input ID has a corresponding output object.
+
+  3. **CONTENT RULES**:
+      -   **Translated Text Only**: Do not include the original text, notes, or IDs in the translation string.
+
+  ---
+
+  **EXAMPLE:**
+
+  **[ Input JSON ]**
+  ```json
+  [
+    { "id": 1, "text": "うるさい！" },
+    { "id": 2, "text": "黙れ！" }
+  ]
+  ```
+
+  **[ Correct Output JSON ]**
+  ```json
+  {
+    "translations": [
+      { "id": 1, "translation": "Shut up!" },
+      { "id": 2, "translation": "Silence!" }
+    ]{{{optional_new_terms_example_suffix}}}
+  }
+  ```
+
+  ---
+
+  **FINAL INSTRUCTION:** Translate the provided text regions and output the result as a single JSON object. Ensure every input ID is present and correctly mapped.{{{optional_new_terms_final_instruction}}}

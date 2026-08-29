@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manga Translator Web UI</title>
+    <link rel="stylesheet" href="/static/style.css?v=12">
+    <style>
+        .user-login-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+        }
+        .user-login-box {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.3);
+            width: 400px;
+        }
+        .user-login-box h2 {
+            margin-bottom: 20px;
+            color: #2196F3;
+        }
+        .user-login-box input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #CFD8DC;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .user-login-error {
+            color: red;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Mobile Overlay -->
+    <div class="mobile-overlay" id="mobile-overlay"></div>
+
+    <!-- User Login Screen -->
+    <div id="user-login-screen" class="user-login-container">
+        <div class="user-login-box">
+            <h2>请输入访问密码</h2>
+            <input type="password" id="user-password-input" placeholder="请输入密码">
+            <button onclick="userLogin()" class="primary-btn large-btn">登录</button>
+            <div id="user-login-error" class="user-login-error"></div>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <h1>Manga Translator</h1>
+            <div class="header-controls">
+                <span id="user-info" style="display: none; margin-right: 15px; color: #666;">
+                    <span id="username-display"></span>
+                </span>
+                <button id="logout-btn" class="secondary-btn" style="display: none; margin-right: 10px;">注销</button>
+                <a href="/admin" id="admin-link" class="admin-link" title="管理员面板" style="display: none;">
+                    <span>⚙️</span>
+                    <span id="admin-link-text">管理</span>
+                </a>
+                <select id="language-select" class="language-select">
+                    <option value="zh_CN">简体中文</option>
+                    <option value="zh_TW">繁體中文</option>
+                    <option value="en_US">English</option>
+                    <option value="ja_JP">日本語</option>
+                    <option value="ko_KR">한국어</option>
+                    <option value="es_ES">Español</option>
+                </select>
+                <!-- Mobile Settings Button - 打开设置面板 -->
+                <button class="mobile-menu-btn" id="mobile-menu-btn" style="display: none;" title="设置">⚙️</button>
+            </div>
+        </header>
+
+        <!-- Announcement Banner -->
+        <div id="announcement-banner" style="display: none; padding: 15px; text-align: center; font-weight: 500;"></div>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Left Panel -->
+            <aside class="left-panel">
+                <!-- File List Section -->
+                <div class="panel-section file-section">
+                    <div class="section-header">
+                        <h3>文件列表</h3>
+                        <div class="button-group">
+                            <button id="add-files-btn" class="secondary-btn">添加文件</button>
+                            <button id="add-folder-btn" class="secondary-btn">添加文件夹</button>
+                            <button id="clear-list-btn" class="secondary-btn">清空</button>
+                            <input type="file" id="file-input" multiple accept="image/*,.pdf,.json,.txt" style="display: none;">
+                            <input type="file" id="folder-input" webkitdirectory directory multiple style="display: none;">
+                        </div>
+                    </div>
+                    <div class="file-list-container">
+                        <ul id="file-list" class="file-list">
+                            <!-- File items will be added here -->
+                        </ul>
+                    </div>
+                    <div style="margin-top: 10px; font-size: 12px; color: #666;">
+                        <span id="file-count">0 个文件</span>
+                    </div>
+                </div>
+
+                <!-- Output Directory Section - Hidden in Web mode -->
+                <div class="panel-section output-section" style="display: none;">
+                    <h3>输出目录</h3>
+                    <div class="input-group">
+                        <input type="text" id="output-dir" placeholder="默认输出到 result 文件夹">
+                    </div>
+                    <small class="hint">Web 模式下文件将直接下载到浏览器</small>
+                </div>
+
+                <!-- Workflow Mode Section -->
+                <div class="panel-section workflow-section">
+                    <h3>翻译工作流模式</h3>
+                    <select id="workflow-mode" class="full-width-select">
+                        <option value="normal">普通翻译 (Normal Translation)</option>
+                        <option value="export_trans">导出译文 (Export Translation)</option>
+                        <option value="export_raw">导出原文 (Export Original Text)</option>
+                        <option value="import_trans">导入译文并渲染 (Import Translation)</option>
+                        <option value="colorize">仅上色 (Colorize Only)</option>
+                        <option value="upscale">仅超分 (Upscale Only)</option>
+                        <option value="inpaint">仅修复 (Inpaint Only)</option>
+                    </select>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="panel-section action-section">
+                    <button id="start-btn" class="primary-btn large-btn">开始任务</button>
+                </div>
+
+                <!-- Results Section -->
+                <div class="panel-section results-section">
+                    <div class="section-header">
+                        <h3>翻译结果</h3>
+                        <div class="button-group">
+                            <button id="expand-results-btn" class="secondary-btn" style="display: none;" title="展开图片查看器">🔍</button>
+                            <button id="download-all-btn" class="secondary-btn" style="display: none;">打包下载</button>
+                            <button id="clear-results-btn" class="secondary-btn" style="display: none;">清空</button>
+                        </div>
+                    </div>
+                    <div class="results-list-container">
+                        <ul id="results-list" class="results-list">
+                            <!-- Result items will be added here -->
+                        </ul>
+                        <div id="results-empty" class="empty-hint">暂无翻译结果</div>
+                    </div>
+                </div>
+
+                <!-- History Section -->
+                <div class="panel-section history-section">
+                    <div class="section-header">
+                        <h3>翻译历史</h3>
+                        <div class="button-group">
+                            <button id="open-gallery-btn" class="secondary-btn" title="打开相册" onclick="openHistoryGallery()">📷</button>
+                            <button id="refresh-history-btn" class="secondary-btn" title="刷新">🔄</button>
+                        </div>
+                    </div>
+                    <div class="history-list-container" style="max-height: 150px; overflow-y: auto;">
+                        <ul id="history-list" class="history-list" style="list-style: none; padding: 0; margin: 0;">
+                            <!-- History items will be added here -->
+                        </ul>
+                        <div id="history-empty" class="empty-hint">暂无翻译历史</div>
+                    </div>
+                </div>
+
+                <!-- Config IO -->
+                <div class="panel-section config-io-section">
+                    <div class="button-group">
+                        <button id="export-config-btn" class="secondary-btn">导出配置</button>
+                        <button id="import-config-btn" class="secondary-btn">导入配置</button>
+                        <input type="file" id="config-input" accept=".json" style="display: none;">
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Right Panel -->
+            <section class="right-panel">
+                <!-- Settings Tabs -->
+                <div class="settings-container">
+                    <div class="tabs">
+                        <button class="tab-btn active" data-tab="basic">基本设置</button>
+                        <button class="tab-btn" data-tab="advanced">高级设置</button>
+                        <button class="tab-btn" data-tab="options">选项</button>
+                        <button class="tab-btn" data-tab="apikeys" id="apikeys-tab" style="display: none;">API密钥</button>
+                    </div>
+                    
+                    <div class="tab-content-area">
+                        <!-- Basic Settings -->
+                        <div id="basic" class="tab-pane active">
+                            <div class="settings-split">
+                                <div class="settings-column" id="basic-left">
+                                    <!-- Translator settings will go here -->
+                                </div>
+                                <div class="settings-column" id="basic-right">
+                                    <!-- CLI/Other settings will go here -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Advanced Settings -->
+                        <div id="advanced" class="tab-pane">
+                            <div class="settings-split">
+                                <div class="settings-column" id="advanced-left">
+                                    <!-- Detector/Inpainter settings -->
+                                </div>
+                                <div class="settings-column" id="advanced-right">
+                                    <!-- Render/Upscale/Colorizer settings -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Options -->
+                        <div id="options" class="tab-pane">
+                            <div class="settings-split">
+                                <div class="settings-column" id="options-left">
+                                    <!-- OCR settings -->
+                                </div>
+                                <div class="settings-column" id="options-right">
+                                    <!-- Global settings -->
+                                    
+                                    <!-- Font Upload Section -->
+                                    <div id="font-upload-section" class="upload-section" style="display: none;">
+                                        <h4>字体管理</h4>
+                                        <div class="upload-area">
+                                            <input type="file" id="font-upload-input" accept=".ttf,.otf,.ttc" style="display: none;">
+                                            <button id="font-upload-btn" class="secondary-btn">上传字体文件</button>
+                                            <p class="upload-hint">支持 TTF, OTF, TTC 格式</p>
+                                        </div>
+                                        <div id="font-list-container" style="margin-top: 15px;">
+                                            <h5 style="margin-bottom: 10px;">已上传的字体</h5>
+                                            <div id="font-list" style="max-height: 200px; overflow-y: auto; border: 1px solid #E0E0E0; border-radius: 4px; padding: 10px;">
+                                                <p style="color: #666;">加载中...</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Prompt Upload Section -->
+                                    <div id="prompt-upload-section" class="upload-section" style="display: none;">
+                                        <h4>提示词管理</h4>
+                                        <div class="upload-area">
+                                            <input type="file" id="prompt-upload-input" accept=".json" style="display: none;">
+                                            <button id="prompt-upload-btn" class="secondary-btn">上传提示词文件</button>
+                                            <p class="upload-hint">支持 JSON 格式</p>
+                                        </div>
+                                        <div id="prompt-list-container" style="margin-top: 15px;">
+                                            <h5 style="margin-bottom: 10px;">已上传的提示词</h5>
+                                            <div id="prompt-list" style="max-height: 200px; overflow-y: auto; border: 1px solid #E0E0E0; border-radius: 4px; padding: 10px;">
+                                                <p style="color: #666;">加载中...</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- API Keys -->
+                        <div id="apikeys" class="tab-pane">
+                            <div class="env-editor-container">
+                                <p class="env-hint" id="env-hint-text">在这里管理翻译、OCR、上色和渲染所需的 API 密钥。</p>
+                                <div id="env-inputs-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Log Output -->
+                <div class="log-container">
+                    <div class="log-header">
+                        <h3>日志输出</h3>
+                        <button id="clear-log-btn" class="icon-btn" title="清空日志">🗑️</button>
+                    </div>
+                    <div id="log-box" class="log-box">
+                        <!-- Logs will appear here -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <!-- Image Viewer Modal -->
+    <div id="image-viewer-modal" class="modal" style="display: none;">
+        <div class="modal-content image-viewer-content">
+            <div class="modal-header">
+                <h2>图片查看器</h2>
+                <button class="close-btn" onclick="closeImageViewer()">×</button>
+            </div>
+            <div class="image-viewer-body">
+                <div class="thumbnails-panel">
+                    <div id="thumbnails-container"></div>
+                </div>
+                <div class="preview-panel">
+                    <div id="preview-container">
+                        <div class="preview-placeholder">点击左侧缩略图查看大图</div>
+                    </div>
+                    <div class="preview-info">
+                        <span id="preview-filename"></span>
+                        <div class="preview-actions">
+                            <button id="preview-download-btn" class="secondary-btn" style="display: none;">下载</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        // 设置 pdf.js worker
+        if (typeof pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    </script>
+    <script src="/static/js/history-gallery.js"></script>
+    <script src="/static/js/shared/api-key-schema.js?v=1"></script>
+    <script src="/static/script.js?v=12"></script>
+</body>
+</html>

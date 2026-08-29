@@ -1,0 +1,1520 @@
+import os
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, List, Optional
+
+from PyQt6.QtCore import QObject, QSize, Qt, QTimer, pyqtSignal, pyqtSlot
+from PyQt6.QtGui import QImage, QPalette, QPixmap
+from PyQt6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QStyle,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QWidget,
+)
+
+from manga_translator.utils import open_pil_image
+from services.file_service import natural_sort_key  # 번역 스캔과 같은 전체 경로 자연 정렬
+
+# 全局线程池，用于异步加载缩略图
+_thumbnail_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="thumbnail_loader")
+
+
+def shutdown_thumbnail_executor():
+    """关闭缩略图加载线程池"""
+    global _thumbnail_executor
+    if _thumbnail_executor:
+        try:
+            _thumbnail_executor.shutdown(wait=False)
+        except Exception:
+            pass
+
+
+class ThumbnailSignals(QObject):
+    """用于从工作线程发送信号到主线程"""
+    thumbnail_loaded = pyqtSignal(str, QPixmap)  # file_path, pixmap
+
+
+def _load_thumbnail_worker(file_path: str) -> tuple[str, Optional[QPixmap]]:
+    """
+    在工作线程中加载缩略图
+    返回 (file_path, pixmap) 或 (file_path, None) 如果失败
+    """
+    try:
+        img = open_pil_image(file_path, eager=False)
+        img.thumbnail((40, 40))
+        
+        # Convert PIL image to QPixmap
+        if img.mode == 'RGB':
+            q_img = QImage(img.tobytes(), img.width, img.height, img.width * 3, QImage.Format.Format_RGB888)
+        elif img.mode == 'RGBA':
+            q_img = QImage(img.tobytes(), img.width, img.height, img.width * 4, QImage.Format.Format_RGBA8888)
+        else:  # Fallback for other modes like L, P, etc.
+            img = img.convert('RGBA')
+            q_img = QImage(img.tobytes(), img.width, img.height, img.width * 4, QImage.Format.Format_RGBA8888)
+
+        pixmap = QPixmap.fromImage(q_img)
+        return (file_path, pixmap)
+    except Exception as e:
+        print(f"Error loading thumbnail for {file_path}: {e}")
+        return (file_path, None)
+
+
+class FileItemWidget(QWidget):
+    """自定义列表项，用于显示缩略图、文件名和移除按钮"""
+    remove_requested = pyqtSignal(str)
+
+    THUMB_SIZE = 40
+    ROW_HEIGHT = 44
+    # MAX Cache Size
+    MAX_CACHE_SIZE = 200
+    # 类级别的缩略图缓存 (LRU)
+    _thumbnail_cache: 'OrderedDict[str, QPixmap]' = OrderedDict()
+    # 类级别的信号对象（所有实例共享）
+    _signals = ThumbnailSignals()
+    # 存储所有活动的实例，用于分发信号
+    _active_instances: Dict[str, List['FileItemWidget']] = {}
+
+    def __init__(self, file_path, is_folder=False, parent=None):
+        super().__init__(parent)
+        self.file_path = file_path
+        self.is_folder = is_folder
+        self._thumbnail_loading = False
+        self.setObjectName("file_item_root")
+        self.setProperty("fileKind", "folder" if is_folder else "file")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setFixedHeight(self.ROW_HEIGHT)
+
+        # 注册实例
+        if not is_folder and not os.path.isdir(file_path):
+            if file_path not in FileItemWidget._active_instances:
+                FileItemWidget._active_instances[file_path] = []
+            FileItemWidget._active_instances[file_path].append(self)
+
+        self.layout = QHBoxLayout(self)
+        self.layout.setContentsMargins(4, 0, 6, 4)
+        self.layout.setSpacing(10)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
+        # Thumbnail
+        self.thumbnail_label = QLabel()
+        self.thumbnail_label.setObjectName("file_item_thumbnail")
+        self.thumbnail_label.setFixedSize(self.THUMB_SIZE, self.THUMB_SIZE)
+        self.thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.layout.addWidget(self.thumbnail_label, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        if is_folder or os.path.isdir(self.file_path):
+            style = QApplication.style()
+            icon = style.standardIcon(QStyle.StandardPixmap.SP_DirIcon)
+            self.thumbnail_label.setPixmap(icon.pixmap(QSize(self.THUMB_SIZE, self.THUMB_SIZE)))
+        elif self._is_archive_file(self.file_path):
+            # 压缩包/文档文件显示特殊图标
+            self.setProperty("fileKind", "archive")
+            style = QApplication.style()
+            icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+            self.thumbnail_label.setPixmap(icon.pixmap(QSize(self.THUMB_SIZE, self.THUMB_SIZE)))
+        else:
+            # 连接全局信号（只连接一次）
+            if not hasattr(FileItemWidget, '_signals_connected'):
+                FileItemWidget._signals.thumbnail_loaded.connect(FileItemWidget._dispatch_thumbnail)
+                FileItemWidget._signals_connected = True
+            self._load_thumbnail()
+
+        # File Name
+        display_name = os.path.basename(file_path)
+        self.base_display_name = display_name  # 保存基础名称
+        self._file_count = None
+        
+        self.name_label = QLabel(display_name)
+        self.name_label.setObjectName("file_item_name_label")
+        self.name_label.setWordWrap(False)
+        self.name_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.name_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.layout.addWidget(self.name_label, 1, Qt.AlignmentFlag.AlignVCenter)
+
+        # Remove Button
+        self.remove_button = QPushButton("✕")
+        self.remove_button.setObjectName("file_item_remove_button")
+        self.remove_button.setFixedSize(20, 20)
+        self.remove_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # 防止获取焦点
+        self.remove_button.clicked.connect(self._emit_remove_request)
+        self.layout.addWidget(self.remove_button, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.refresh_json_status()
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        return QSize(max(hint.width(), 160), self.ROW_HEIGHT)
+    
+    def __del__(self):
+        """析构时从活动实例列表中移除"""
+        if self.file_path in FileItemWidget._active_instances:
+            try:
+                FileItemWidget._active_instances[self.file_path].remove(self)
+                if not FileItemWidget._active_instances[self.file_path]:
+                    del FileItemWidget._active_instances[self.file_path]
+            except (ValueError, KeyError):
+                pass
+    
+    @classmethod
+    def _dispatch_thumbnail(cls, file_path: str, pixmap: Optional[QPixmap]):
+        """分发缩略图到所有相关实例"""
+        if file_path in cls._active_instances:
+            for instance in cls._active_instances[file_path]:
+                instance._on_thumbnail_loaded(file_path, pixmap)
+
+    def update_file_count(self, count: int):
+        """更新文件夹显示的文件数量"""
+        if self.is_folder:
+            self._file_count = count
+            from services import get_i18n_manager
+            i18n = get_i18n_manager()
+            suffix = i18n.translate("{count} files", count=count) if i18n else f"{count} files"
+            self.name_label.setText(f"{self.base_display_name} ({suffix})")
+
+    def _load_thumbnail(self):
+        """异步加载缩略图，使用缓存机制"""
+        # 检查缓存
+        if self.file_path in FileItemWidget._thumbnail_cache:
+            self.thumbnail_label.setPixmap(FileItemWidget._thumbnail_cache[self.file_path])
+            return
+        
+        # 显示加载中提示
+        self.thumbnail_label.setText("...")
+        self._thumbnail_loading = True
+        
+        # 提交到线程池异步加载
+        future = _thumbnail_executor.submit(_load_thumbnail_worker, self.file_path)
+        future.add_done_callback(self._on_thumbnail_future_done)
+    
+    def _on_thumbnail_future_done(self, future):
+        """线程池任务完成回调"""
+        try:
+            file_path, pixmap = future.result()
+            # 通过信号发送到主线程
+            FileItemWidget._signals.thumbnail_loaded.emit(file_path, pixmap)
+        except Exception as e:
+            print(f"Error in thumbnail future callback: {e}")
+    
+    def _on_thumbnail_loaded(self, file_path: str, pixmap: Optional[QPixmap]):
+        """在主线程中接收缩略图加载完成的信号"""
+        self._thumbnail_loading = False
+        
+        # 检查 widget 是否还存在
+        try:
+            if pixmap:
+                self.thumbnail_label.setPixmap(pixmap)
+                
+                # 更新缓存 (LRU逻辑)
+                if file_path in FileItemWidget._thumbnail_cache:
+                    # 如果已存在，移动到末尾（标记为最近使用）
+                    FileItemWidget._thumbnail_cache.move_to_end(file_path)
+                    # 更新内容（以防万一）
+                    FileItemWidget._thumbnail_cache[file_path] = pixmap
+                else:
+                    # 如果不存在，添加到末尾
+                    FileItemWidget._thumbnail_cache[file_path] = pixmap
+                    # 检查容量
+                    if len(FileItemWidget._thumbnail_cache) > FileItemWidget.MAX_CACHE_SIZE:
+                        # 移除第一个元素（最久未使用）
+                        FileItemWidget._thumbnail_cache.popitem(last=False)
+            else:
+                self.thumbnail_label.setText("ERR")
+        except RuntimeError:
+            # Widget 已被删除，忽略
+            pass
+
+    def _emit_remove_request(self):
+        """发射删除请求信号"""
+        self.remove_requested.emit(self.file_path)
+
+    def refresh_json_status(self, *, force: bool = False) -> None:
+        """JSON 존재 여부에 따라 닫기 버튼 색을 갱신한다."""
+        if not force and self.remove_button.property("hasJson") is True:
+            return
+        has_json = False
+        if (
+            not self.is_folder
+            and not os.path.isdir(self.file_path)
+            and not self._is_archive_file(self.file_path)
+        ):
+            try:
+                from manga_translator.utils.path_manager import find_json_path
+
+                has_json = bool(find_json_path(self.file_path))
+            except Exception:
+                has_json = False
+        self.remove_button.setProperty("hasJson", has_json)
+        style = self.remove_button.style()
+        if style is not None:
+            style.unpolish(self.remove_button)
+            style.polish(self.remove_button)
+        self.remove_button.update()
+
+    @classmethod
+    def refresh_json_status_for_path(cls, file_path: str) -> None:
+        if not file_path:
+            return
+        keys = {file_path, os.path.normpath(file_path)}
+        for key in list(cls._active_instances):
+            if key in keys or os.path.normcase(key) == os.path.normcase(file_path):
+                for instance in list(cls._active_instances.get(key, ())):
+                    instance.refresh_json_status(force=True)
+    
+    @staticmethod
+    def _is_archive_file(file_path: str) -> bool:
+        """检查文件是否是压缩包/文档格式"""
+        archive_extensions = {'.pdf', '.epub', '.cbz', '.cbr', '.zip'}
+        ext = os.path.splitext(file_path)[1].lower()
+        return ext in archive_extensions
+
+    def get_path(self):
+        return self.file_path
+    
+    @classmethod
+    def clear_thumbnail_cache(cls):
+        """清空缩略图缓存"""
+        cls._thumbnail_cache.clear()
+    
+    @classmethod
+    def remove_from_cache(cls, file_path: str):
+        """从缓存中移除指定文件的缩略图"""
+        if file_path in cls._thumbnail_cache:
+            del cls._thumbnail_cache[file_path]
+
+
+class FileListView(QTreeWidget):
+    """显示文件列表的自定义控件（支持文件夹分组）"""
+    file_remove_requested = pyqtSignal(str)
+    file_selected = pyqtSignal(str)
+    file_double_clicked = pyqtSignal(str)
+    files_dropped = pyqtSignal(list)  # 新增：拖放文件信号
+    _folders_scanned = pyqtSignal(list)  # 内部信号：文件夹扫描完成
+
+    EMPTY_STATE_TEXT_KEY = (
+        "Drag and drop files or folders here\nor click the buttons above to add"
+    )
+    EDITOR_EMPTY_STATE_TEXT_KEY = (
+        "Drag and drop files\nor folders here\nor click the buttons\nabove to add"
+    )
+
+    def __init__(self, model, parent=None, empty_state_key: Optional[str] = None):
+        super().__init__(parent)
+        self.model = model
+        self._empty_state_key = empty_state_key or self.EMPTY_STATE_TEXT_KEY
+        
+        # 导入i18n
+        from services import get_i18n_manager
+        self.i18n = get_i18n_manager()
+        
+        # 设置树形控件属性
+        self.setHeaderHidden(True)  # 隐藏标题栏
+        self.setIndentation(20)  # 设置缩进
+        self.setAnimated(True)  # 启用展开/折叠动画
+        self.setUniformRowHeights(True)
+        self.setIconSize(QSize(0, 0))
+        self.setEditTriggers(QTreeWidget.EditTrigger.NoEditTriggers)  # 禁止双击触发内联编辑，避免与自定义itemWidget冲突导致的闪烁
+        self.setExpandsOnDoubleClick(False)  # 关闭Qt内置的双击展开逻辑，改为手动延迟触发，避免动画被打断而闪烁
+        
+        # 启用拖放
+        self.setAcceptDrops(True)
+        self.setDragEnabled(False)  # 禁用拖出，只允许拖入
+        
+        # 存储文件夹到树节点的映射
+        self.folder_nodes: Dict[str, QTreeWidgetItem] = {}
+        self._expand_restore_tokens: Dict[int, int] = {}
+        self._auto_expand_after_empty = False
+        self._pending_folder_scans = 0
+        
+        # 连接选择信号
+        self.itemSelectionChanged.connect(self._on_selection_changed)
+        # 注意: 폴더 확장/파일 오픈은 itemDoubleClicked 시그널 대신
+        # mouseDoubleClickEvent를 직접 오버라이드해서 처리한다.
+        # (Qt 기본 mouseDoubleClickEvent가 시그널 emit 전에 수행하는
+        #  부수 처리들이 확장 애니메이션 시작 프레임과 겹쳐 깜빡임을
+        #  일으켰기 때문 - 아래 mouseDoubleClickEvent 참고)
+        
+        # 连接内部信号（确保在主线程中处理）
+        self._folders_scanned.connect(self._on_folders_scanned)
+
+    def _attach_item_widget(self, item: QTreeWidgetItem, column: int, widget: FileItemWidget) -> None:
+        """Bind the row widget and lock the item height to the widget, not the empty text row."""
+        self.setItemWidget(item, column, widget)
+        item.setSizeHint(column, widget.sizeHint())
+
+    def sizeHintForRow(self, _row: int) -> int:
+        return FileItemWidget.ROW_HEIGHT
+    
+    def _t(self, key: str, **kwargs) -> str:
+        """翻译辅助方法"""
+        if self.i18n:
+            return self.i18n.translate(key, **kwargs)
+        return key
+    
+    def refresh_empty_state_text(self):
+        """重绘空列表占位提示文本（用于语言切换）。"""
+        self._refresh_folder_count_labels()
+        self.viewport().update()
+        self.update()
+
+    @pyqtSlot()
+    def refresh_json_status(self) -> None:
+        """목록에 보이는 이미지 행의 JSON 표시 색을 다시 맞춘다."""
+
+        def walk(item: QTreeWidgetItem):
+            widget = self.itemWidget(item, 0)
+            if isinstance(widget, FileItemWidget):
+                widget.refresh_json_status(force=False)
+            for i in range(item.childCount()):
+                walk(item.child(i))
+
+        for i in range(self.topLevelItemCount()):
+            walk(self.topLevelItem(i))
+
+    def refresh_json_status_for_path(self, file_path: str) -> None:
+        FileItemWidget.refresh_json_status_for_path(file_path)
+
+    def _refresh_folder_count_labels(self):
+        def walk(item: QTreeWidgetItem):
+            widget = self.itemWidget(item, 0)
+            if isinstance(widget, FileItemWidget) and widget.is_folder and widget._file_count is not None:
+                widget.update_file_count(widget._file_count)
+            for i in range(item.childCount()):
+                walk(item.child(i))
+
+        for i in range(self.topLevelItemCount()):
+            walk(self.topLevelItem(i))
+
+    def paintEvent(self, event):
+        """重写绘制事件，在列表为空时显示提示"""
+        super().paintEvent(event)
+        
+        # 只在列表为空时显示提示
+        if self.topLevelItemCount() == 0:
+            from PyQt6.QtCore import Qt, QRectF
+            from PyQt6.QtGui import QFont, QPainter, QPen, QPalette
+            
+            painter = QPainter(self.viewport())
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            
+            rect = self.viewport().rect()
+            # Draw a beautiful dashed rounded rectangle
+            margin = 16
+            draw_rect = QRectF(rect.adjusted(margin, margin, -margin, -margin))
+            
+            # Get color from palette
+            color = self.palette().color(QPalette.ColorRole.PlaceholderText)
+            
+            # Draw dashed border
+            pen = QPen(color, 1.5, Qt.PenStyle.DashLine)
+            pen.setDashPattern([6, 4])
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(draw_rect, 12, 12)
+            
+            # Draw Icon and Text
+            painter.setPen(color)
+            
+            # Draw Text centered
+            font_text = QFont()
+            font_text.setPointSize(10)
+            font_text.setBold(True)
+            painter.setFont(font_text)
+            text_rect = QRectF(draw_rect.left(), draw_rect.top(), draw_rect.width(), draw_rect.height())
+            
+            text = self._t(self._empty_state_key)
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, text)
+            
+            painter.end()
+
+    def mouseDoubleClickEvent(self, event):
+        """Qt의 기본 더블클릭 처리(QAbstractItemView::mouseDoubleClickEvent)를
+        타지 않고 직접 처리한다. 기본 구현은 itemDoubleClicked 시그널을
+        emit하기 전에 edit 체크 등 부수 처리를 하는데, 이게 확장 애니메이션
+        시작 프레임과 겹쳐 깜빡임을 일으켰다. 여기서 바로 처리하면 화살표
+        클릭과 동일하게, 불필요한 중간 단계 없이 곧바로 토글된다."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            item = self.itemAt(event.pos())
+            if item is not None:
+                file_path = item.data(0, Qt.ItemDataRole.UserRole)
+                if file_path and not os.path.isdir(file_path):
+                    self.file_double_clicked.emit(file_path)
+                    event.accept()
+                    return
+                elif item.childCount() > 0:
+                    self._toggle_folder_animated(item)
+                    event.accept()
+                    return
+        super().mouseDoubleClickEvent(event)
+
+    def _tree_animation_ms(self) -> int:
+        hint = self.style().styleHint(QStyle.StyleHint.SH_Widget_Animation_Duration, None, self)
+        return hint if hint > 0 else 250
+
+    def _iter_descendant_items(self, item: QTreeWidgetItem):
+        for i in range(item.childCount()):
+            child = item.child(i)
+            yield child
+            yield from self._iter_descendant_items(child)
+
+    def _set_descendant_widgets_offscreen(self, item: QTreeWidgetItem, offscreen: bool) -> None:
+        try:
+            descendants = list(self._iter_descendant_items(item))
+        except RuntimeError:
+            return
+        for child in descendants:
+            widget = self.itemWidget(child, 0)
+            if widget is None:
+                continue
+            widget.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, offscreen)
+            if not offscreen:
+                widget.update()
+
+    def _bump_expand_token(self, item: QTreeWidgetItem) -> int:
+        key = id(item)
+        token = self._expand_restore_tokens.get(key, 0) + 1
+        self._expand_restore_tokens[key] = token
+        return token
+
+    def _schedule_restore_folder_widgets(self, item: QTreeWidgetItem) -> None:
+        key = id(item)
+        token = self._bump_expand_token(item)
+        QTimer.singleShot(
+            self._tree_animation_ms(),
+            lambda: self._restore_folder_widgets(item, key, token),
+        )
+
+    def _restore_folder_widgets(self, item: QTreeWidgetItem, key: int, token: int) -> None:
+        if self._expand_restore_tokens.get(key) != token:
+            return
+        try:
+            item.isExpanded()
+        except RuntimeError:
+            return
+        self._set_descendant_widgets_offscreen(item, False)
+
+    def _expand_folder_animated(self, item: QTreeWidgetItem) -> None:
+        # 펼침 준비 단계에서 자식 itemWidget이 한 프레임 그려진 뒤 다시 숨겨져 깜빡인다.
+        # 화면에는 안 나오게 하고, 애니메이션이 끝나면 다시 붙인다.
+        if item.isExpanded():
+            return
+        self._set_descendant_widgets_offscreen(item, True)
+        viewport = self.viewport()
+        viewport.setUpdatesEnabled(False)
+        try:
+            self.expandItem(item)
+        finally:
+            viewport.setUpdatesEnabled(True)
+        self._schedule_restore_folder_widgets(item)
+
+    def _toggle_folder_animated(self, item: QTreeWidgetItem) -> None:
+        if item.isExpanded():
+            self._bump_expand_token(item)
+            self._set_descendant_widgets_offscreen(item, False)
+            self.collapseItem(item)
+            return
+        self._expand_folder_animated(item)
+
+    def _expand_topmost_folder(self) -> None:
+        for i in range(self.topLevelItemCount()):
+            item = self.topLevelItem(i)
+            widget = self.itemWidget(item, 0)
+            is_folder = isinstance(widget, FileItemWidget) and widget.is_folder
+            if not is_folder:
+                path = item.data(0, Qt.ItemDataRole.UserRole)
+                is_folder = bool(path and os.path.isdir(path))
+            if is_folder:
+                self._expand_folder_animated(item)
+                return
+
+    def _item_is_folder(self, tree_item: QTreeWidgetItem) -> bool:
+        widget = self.itemWidget(tree_item, 0)
+        if isinstance(widget, FileItemWidget) and widget.is_folder:
+            return True
+        path = tree_item.data(0, Qt.ItemDataRole.UserRole)
+        return bool(path and os.path.isdir(path))
+
+    def get_selected_entry(self) -> tuple[Optional[str], bool]:
+        """현재 선택 항목의 (경로, 폴더 여부). 선택이 없으면 (None, False)."""
+        selected_items = self.selectedItems()
+        if not selected_items:
+            return None, False
+        tree_item = selected_items[0]
+        file_path = tree_item.data(0, Qt.ItemDataRole.UserRole)
+        if not file_path:
+            return None, False
+        return file_path, self._item_is_folder(tree_item)
+
+    def _on_selection_changed(self):
+        """处理选择变化"""
+        selected_items = self.selectedItems()
+        if not selected_items:
+            return
+        
+        tree_item = selected_items[0]
+        file_path = tree_item.data(0, Qt.ItemDataRole.UserRole)
+        
+        # 只有当选中的是文件（不是文件夹节点）时才发出信号
+        if file_path and not os.path.isdir(file_path):
+            self.file_selected.emit(file_path)
+
+    def _work_order_key_for_path(self, path: str, is_folder: Optional[bool] = None):
+        """FileScannerWorker와 같은 그룹: 압축파일 → 폴더 → 개별 파일, 그룹 안은 경로 자연 정렬."""
+        if is_folder is None:
+            is_folder = bool(path and os.path.isdir(path))
+        if is_folder:
+            group = 1
+        elif FileItemWidget._is_archive_file(path):
+            group = 0
+        else:
+            group = 2
+        return (group, natural_sort_key(path or ''))
+
+    def _top_level_insert_index(self, path: str, is_folder: bool = False) -> int:
+        key = self._work_order_key_for_path(path, is_folder)
+        for i in range(self.topLevelItemCount()):
+            item = self.topLevelItem(i)
+            item_path = item.data(0, Qt.ItemDataRole.UserRole) or ''
+            item_is_folder = self._item_is_folder(item)
+            if self._work_order_key_for_path(item_path, item_is_folder) > key:
+                return i
+        return self.topLevelItemCount()
+
+    def _insert_top_level_item(self, item: QTreeWidgetItem, is_folder: bool = False) -> None:
+        path = item.data(0, Qt.ItemDataRole.UserRole) or ''
+        self.insertTopLevelItem(self._top_level_insert_index(path, is_folder), item)
+
+    def add_files(self, file_paths: List[str]):
+        """添加多个文件/文件夹到列表（异步处理大文件夹）"""
+        folders_to_add = []
+        files_to_add = []
+        
+        for path in file_paths:
+            norm_path = os.path.normpath(path)
+            if os.path.isdir(norm_path):
+                folders_to_add.append(norm_path)
+            else:
+                files_to_add.append(norm_path)
+        folders_to_add.sort(key=natural_sort_key)
+        files_to_add.sort(key=natural_sort_key)
+
+        list_was_empty = self.topLevelItemCount() == 0
+        
+        # 立即添加单个文件（不会阻塞）
+        for file_path in files_to_add:
+            self._add_single_file(file_path)
+        
+        # 异步添加文件夹（避免阻塞UI）
+        if folders_to_add:
+            if list_was_empty and self._pending_folder_scans == 0:
+                self._auto_expand_after_empty = True
+            self._pending_folder_scans += 1
+            # 显示加载提示
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            
+            # 在后台线程中扫描文件夹结构
+            def scan_folder_structure():
+                result = []
+                for folder_path in folders_to_add:
+                    if folder_path in self.folder_nodes:
+                        continue  # 文件夹已存在
+                    
+                    # 在后台线程中扫描文件夹结构
+                    folder_data = self._scan_folder_structure(folder_path)
+                    result.append((folder_path, folder_data))
+                return result
+            
+            future = _thumbnail_executor.submit(scan_folder_structure)
+            future.add_done_callback(lambda f: self._folders_scanned.emit(f.result()))
+    
+    def _scan_folder_structure(self, folder_path: str):
+        """在后台线程中扫描文件夹结构（不创建UI元素）"""
+        try:
+            image_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.webp', '.avif', '.heic', '.heif'}
+            archive_extensions = {'.pdf', '.epub', '.cbz', '.cbr', '.zip'}
+            all_extensions = image_extensions | archive_extensions
+            structure = {'subdirs': [], 'files': [], 'subdir_data': {}}
+            
+            items = os.listdir(folder_path)
+            for item in items:
+                if item == 'manga_translator_work':
+                    continue
+                    
+                item_path = os.path.join(folder_path, item)
+                if os.path.isdir(item_path):
+                    structure['subdirs'].append(item_path)
+                elif os.path.splitext(item)[1].lower() in all_extensions:
+                    structure['files'].append(item_path)
+            
+            # 排序
+            structure['subdirs'].sort(key=natural_sort_key)
+            structure['files'].sort(key=natural_sort_key)
+            
+            # 递归扫描子文件夹
+            for subdir in structure['subdirs']:
+                structure['subdir_data'][subdir] = self._scan_folder_structure(subdir)
+            
+            return structure
+        except Exception as e:
+            print(f"Error scanning folder {folder_path}: {e}")
+            return {'subdirs': [], 'files': [], 'subdir_data': {}}
+    
+    @pyqtSlot(list)
+    def _on_folders_scanned(self, folder_data_list):
+        """文件夹扫描完成后的回调（在主线程中创建UI元素）"""
+        try:
+            for folder_path, folder_data in folder_data_list:
+                self._add_folder_tree_from_data(folder_path, folder_data)
+        finally:
+            # 恢复光标
+            QApplication.restoreOverrideCursor()
+            self._pending_folder_scans = max(0, self._pending_folder_scans - 1)
+            if self._pending_folder_scans == 0 and self._auto_expand_after_empty:
+                self._auto_expand_after_empty = False
+                self._expand_topmost_folder()
+    
+    def _add_folder_tree_from_data(self, folder_path: str, folder_data: dict):
+        """从扫描的数据创建文件夹树（在主线程中执行）"""
+        if folder_path in self.folder_nodes:
+            return
+        
+        # 创建顶层文件夹节点
+        folder_item = QTreeWidgetItem()
+        folder_item.setData(0, Qt.ItemDataRole.UserRole, folder_path)
+        
+        folder_widget = FileItemWidget(folder_path, is_folder=True)
+        folder_widget.remove_requested.connect(self.file_remove_requested.emit)
+        
+        self._insert_top_level_item(folder_item, is_folder=True)
+        self._attach_item_widget(folder_item, 0, folder_widget)
+        self.folder_nodes[folder_path] = folder_item
+        
+        # 递归添加子文件夹和文件
+        self._populate_folder_tree_from_data(folder_item, folder_path, folder_data)
+        
+        # 更新文件数量
+        file_count = self._count_files_in_tree(folder_item)
+        folder_widget.update_file_count(file_count)
+    
+    def _populate_folder_tree_from_data(self, parent_item: QTreeWidgetItem, folder_path: str, folder_data: dict):
+        """从扫描的数据填充文件夹树（在主线程中执行）"""
+        # os.walk와 같이 현재 폴더 파일을 먼저, 하위 폴더는 나중에
+        for file_path in folder_data.get('files', []):
+            file_item = QTreeWidgetItem(parent_item)
+            file_item.setData(0, Qt.ItemDataRole.UserRole, file_path)
+            
+            file_widget = FileItemWidget(file_path, is_folder=False)
+            file_widget.remove_requested.connect(self.file_remove_requested.emit)
+            
+            parent_item.addChild(file_item)
+            self._attach_item_widget(file_item, 0, file_widget)
+
+        for subdir in folder_data.get('subdirs', []):
+            subdir_item = QTreeWidgetItem(parent_item)
+            subdir_item.setData(0, Qt.ItemDataRole.UserRole, subdir)
+            
+            subdir_widget = FileItemWidget(subdir, is_folder=True)
+            subdir_widget.remove_requested.connect(self.file_remove_requested.emit)
+            
+            parent_item.addChild(subdir_item)
+            self._attach_item_widget(subdir_item, 0, subdir_widget)
+            self.folder_nodes[subdir] = subdir_item
+            
+            # 递归处理子文件夹
+            subdir_data = folder_data.get('subdir_data', {}).get(subdir)
+            if subdir_data:
+                self._populate_folder_tree_from_data(subdir_item, subdir, subdir_data)
+            
+            # 更新子文件夹的文件数量
+            file_count = self._count_files_in_tree(subdir_item)
+            subdir_widget.update_file_count(file_count)
+        
+        # 触发重绘
+        self.viewport().update()
+    
+    def add_files_from_tree(self, folder_tree: dict):
+        """
+        从完整的树结构添加文件
+        folder_tree: {folder_path: {'files': [...], 'subfolders': [...]}}
+        """
+        if not folder_tree:
+            return
+        
+        # 找到所有根文件夹（没有父文件夹在tree中的文件夹）
+        all_folders = set(folder_tree.keys())
+        root_folders = []
+        
+        for folder in all_folders:
+            is_root = True
+            for other_folder in all_folders:
+                if folder != other_folder and folder.startswith(other_folder + os.sep):
+                    is_root = False
+                    break
+            if is_root:
+                root_folders.append(folder)
+        
+        # 按自然排序
+        root_folders.sort(key=natural_sort_key)
+        
+        # 为每个根文件夹创建树
+        for root_folder in root_folders:
+            self._create_folder_node_from_tree(root_folder, folder_tree, None)
+    
+    def _create_folder_node_from_tree(self, folder_path: str, folder_tree: dict, parent_item: QTreeWidgetItem = None):
+        """从树结构递归创建文件夹节点"""
+        if folder_path not in folder_tree:
+            return
+        
+        # 创建文件夹节点
+        if parent_item is None:
+            folder_item = QTreeWidgetItem()
+            folder_item.setData(0, Qt.ItemDataRole.UserRole, folder_path)
+            self._insert_top_level_item(folder_item, is_folder=True)
+        else:
+            folder_item = QTreeWidgetItem(parent_item)
+            parent_item.addChild(folder_item)
+            folder_item.setData(0, Qt.ItemDataRole.UserRole, folder_path)
+        
+        # 创建文件夹控件
+        folder_widget = FileItemWidget(folder_path, is_folder=True)
+        folder_widget.remove_requested.connect(self.file_remove_requested.emit)
+        self._attach_item_widget(folder_item, 0, folder_widget)
+        
+        # 保存文件夹节点
+        self.folder_nodes[folder_path] = folder_item
+        
+        # 添加该文件夹直接包含的文件
+        folder_data = folder_tree[folder_path]
+        for file_path in sorted(folder_data.get('files', []), key=natural_sort_key):
+            self._add_file_to_folder(file_path, folder_item)
+        
+        # 递归添加子文件夹
+        subfolders = folder_data.get('subfolders', [])
+        subfolders.sort(key=natural_sort_key)
+        for subfolder in subfolders:
+            self._create_folder_node_from_tree(subfolder, folder_tree, folder_item)
+        
+        # 更新文件数量
+        file_count = self._count_files_in_tree(folder_item)
+        folder_widget.update_file_count(file_count)
+    
+    def add_files_with_tree(self, file_paths: List[str], folder_map: dict = None):
+        """
+        添加文件列表，并根据folder_map创建树形结构
+        只添加file_paths中的文件，不扫描整个文件夹
+        
+        Args:
+            file_paths: 要添加的文件列表
+            folder_map: 文件到文件夹的映射 {file_path: folder_path}
+        """
+        if not folder_map:
+            # 如果没有folder_map，使用普通的add_files
+            self.add_files(file_paths)
+            return
+        
+        # 按文件夹分组
+        folder_groups = {}  # 文件按其直接父文件夹分组
+        single_files = []
+        all_folders = set()
+        
+        # 首先收集所有文件的直接父文件夹
+        for file_path in file_paths:
+            norm_file_path = os.path.normpath(file_path)
+            mapped_folder = folder_map.get(file_path)
+            
+            if mapped_folder:
+                norm_mapped_folder = os.path.normpath(mapped_folder)
+                
+                # 文件应该被添加到其直接父文件夹
+                file_dir = os.path.dirname(norm_file_path)
+                if file_dir not in folder_groups:
+                    folder_groups[file_dir] = []
+                folder_groups[file_dir].append(norm_file_path)
+                
+                # 添加直接父文件夹
+                all_folders.add(file_dir)
+                
+                # 添加 folder_map 中映射的文件夹
+                all_folders.add(norm_mapped_folder)
+            else:
+                single_files.append(norm_file_path)
+        
+        # 为每个文件夹添加从其到顶层文件夹的所有中间文件夹
+        if all_folders:
+            expanded_folders = set(all_folders)  # 先包含所有已知文件夹
+            
+            # 为每个文件夹添加所有父文件夹，直到到达顶层文件夹或根目录
+            for folder in list(all_folders):
+                current = folder
+                while True:
+                    parent = os.path.dirname(current)
+                    # 如果父文件夹为空或与当前相同（到达根目录），停止
+                    if not parent or parent == current:
+                        break
+                    expanded_folders.add(parent)
+                    current = parent
+                    # 如果父文件夹已经在原始 all_folders 中，说明这是顶层文件夹，停止
+                    if parent in all_folders:
+                        break
+            
+            all_folders = expanded_folders
+        
+        # 构建文件夹层级关系
+        folder_hierarchy = self._build_folder_hierarchy(all_folders)
+        
+        # 按层级创建文件夹树
+        self._create_folder_tree_with_files(folder_hierarchy, folder_groups)
+        
+        # 添加单独的文件
+        for file_path in sorted(single_files, key=natural_sort_key):
+            self._add_single_file(file_path)
+    
+    def _build_folder_hierarchy(self, folders: set) -> dict:
+        """
+        构建文件夹的层级关系
+        返回: {parent_folder: [child_folders]}
+        """
+        hierarchy = {}
+        root_folders = []
+        
+        for folder in folders:
+            # 查找父文件夹
+            parent = None
+            for other_folder in folders:
+                if folder != other_folder and folder.startswith(other_folder + os.sep):
+                    # folder 是 other_folder 的子文件夹
+                    if parent is None or len(other_folder) > len(parent):
+                        parent = other_folder
+            
+            if parent:
+                if parent not in hierarchy:
+                    hierarchy[parent] = []
+                hierarchy[parent].append(folder)
+            else:
+                root_folders.append(folder)
+        
+        return {'__root__': root_folders, **hierarchy}
+    
+    def _create_folder_tree_with_files(self, hierarchy: dict, folder_groups: dict, parent_item=None, parent_folder=None):
+        """
+        递归创建文件夹树形结构
+        使用自然排序（数字排序：1, 2, 10 而不是 1, 10, 2）
+        """
+        folders_to_process = hierarchy.get(parent_folder or '__root__', [])
+        
+        # 使用自然排序
+        for folder_path in sorted(folders_to_process, key=natural_sort_key):
+            # 创建文件夹节点
+            if parent_item is None:
+                # 顶层文件夹
+                folder_item = QTreeWidgetItem()
+                folder_item.setData(0, Qt.ItemDataRole.UserRole, folder_path)
+                self._insert_top_level_item(folder_item, is_folder=True)
+            else:
+                # 子文件夹
+                folder_item = QTreeWidgetItem(parent_item)
+                parent_item.addChild(folder_item)
+            
+            folder_item.setData(0, Qt.ItemDataRole.UserRole, folder_path)
+            
+            # 创建文件夹控件
+            folder_widget = FileItemWidget(folder_path, is_folder=True)
+            folder_widget.remove_requested.connect(self.file_remove_requested.emit)
+            self._attach_item_widget(folder_item, 0, folder_widget)
+            
+            # 保存文件夹节点
+            self.folder_nodes[folder_path] = folder_item
+            
+            # 添加该文件夹中的文件
+            if folder_path in folder_groups:
+                for file_path in sorted(folder_groups[folder_path], key=natural_sort_key):
+                    self._add_file_to_folder(file_path, folder_item)
+            
+            # 递归处理子文件夹
+            if folder_path in hierarchy:
+                self._create_folder_tree_with_files(hierarchy, folder_groups, folder_item, folder_path)
+            
+            # 更新文件数量（包括子文件夹中的文件）
+            file_count = len(folder_groups.get(folder_path, []))
+            # 递归统计子文件夹中的文件数量
+            for child_folder in hierarchy.get(folder_path, []):
+                file_count += self._count_files_in_hierarchy(child_folder, hierarchy, folder_groups)
+            folder_widget.update_file_count(file_count)
+    
+    def _count_files_in_hierarchy(self, folder_path: str, hierarchy: dict, folder_groups: dict) -> int:
+        """递归统计文件夹及其子文件夹中的文件数量"""
+        count = len(folder_groups.get(folder_path, []))
+        for child_folder in hierarchy.get(folder_path, []):
+            count += self._count_files_in_hierarchy(child_folder, hierarchy, folder_groups)
+        return count
+    
+    def _add_folder_with_files(self, folder_path: str, file_list: List[str]):
+        """
+        添加文件夹及其指定的文件（不扫描整个文件夹）
+        
+        Args:
+            folder_path: 文件夹路径
+            file_list: 要添加的文件列表
+        """
+        if folder_path in self.folder_nodes:
+            # 文件夹已存在，只添加新文件
+            folder_item = self.folder_nodes[folder_path]
+            for file_path in file_list:
+                self._add_file_to_folder(file_path, folder_item)
+            # 更新文件数量
+            folder_widget = self.itemWidget(folder_item, 0)
+            if isinstance(folder_widget, FileItemWidget):
+                folder_widget.update_file_count(len(file_list))
+            return
+        
+        # 创建顶层文件夹节点
+        folder_item = QTreeWidgetItem()
+        folder_item.setData(0, Qt.ItemDataRole.UserRole, folder_path)
+        
+        # 创建文件夹项的自定义控件
+        folder_widget = FileItemWidget(folder_path, is_folder=True)
+        folder_widget.remove_requested.connect(self.file_remove_requested.emit)
+        
+        self._insert_top_level_item(folder_item, is_folder=True)
+        self._attach_item_widget(folder_item, 0, folder_widget)
+        
+        # 保存文件夹节点
+        self.folder_nodes[folder_path] = folder_item
+        
+        # 添加文件到文件夹
+        for file_path in sorted(file_list, key=natural_sort_key):
+            self._add_file_to_folder(file_path, folder_item)
+        
+        # 更新文件数量显示
+        folder_widget.update_file_count(len(file_list))
+    
+    def _add_folder_tree(self, folder_path: str):
+        """添加文件夹及其完整的树形结构"""
+        if folder_path in self.folder_nodes:
+            return  # 文件夹已存在
+        
+        # 创建顶层文件夹节点
+        folder_item = QTreeWidgetItem()
+        folder_item.setData(0, Qt.ItemDataRole.UserRole, folder_path)
+        
+        # 创建文件夹项的自定义控件
+        folder_widget = FileItemWidget(folder_path, is_folder=True)
+        folder_widget.remove_requested.connect(self.file_remove_requested.emit)
+        
+        self._insert_top_level_item(folder_item, is_folder=True)
+        self._attach_item_widget(folder_item, 0, folder_widget)
+        
+        # 保存文件夹节点
+        self.folder_nodes[folder_path] = folder_item
+        
+        # 递归添加子文件夹和文件
+        self._populate_folder_tree(folder_item, folder_path)
+        
+        # 更新文件数量显示
+        file_count = self._count_files_recursive(folder_path)
+        folder_widget.update_file_count(file_count)
+    
+    def _count_files_recursive(self, folder_path: str) -> int:
+        """递归统计文件夹中的图片文件数量"""
+        if not os.path.isdir(folder_path):
+            return 0
+        try:
+            image_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.webp', '.avif', '.heic', '.heif'}
+            archive_extensions = {'.pdf', '.epub', '.cbz', '.cbr', '.zip'}
+            all_extensions = image_extensions | archive_extensions
+            count = 0
+            for root, dirs, files in os.walk(folder_path):
+                # 忽略 manga_translator_work 目录
+                if 'manga_translator_work' in dirs:
+                    dirs.remove('manga_translator_work')
+                    
+                for filename in files:
+                    if os.path.splitext(filename)[1].lower() in all_extensions:
+                        count += 1
+            return count
+        except Exception:
+            return 0
+    
+    def _populate_folder_tree(self, parent_item: QTreeWidgetItem, folder_path: str):
+        """递归填充文件夹树形结构"""
+        try:
+            image_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.webp', '.avif', '.heic', '.heif'}
+            archive_extensions = {'.pdf', '.epub', '.cbz', '.cbr', '.zip'}
+            all_extensions = image_extensions | archive_extensions
+            
+            # 获取当前文件夹的直接子项
+            items = os.listdir(folder_path)
+            
+            # 分离文件夹和文件
+            subdirs = []
+            files = []
+            
+            for item in items:
+                # 忽略 manga_translator_work 目录
+                if item == 'manga_translator_work':
+                    continue
+                    
+                item_path = os.path.join(folder_path, item)
+                if os.path.isdir(item_path):
+                    subdirs.append(item_path)
+                elif os.path.splitext(item)[1].lower() in all_extensions:
+                    files.append(item_path)
+            
+            # os.walk와 같이 현재 폴더 파일을 먼저, 하위 폴더는 나중에
+            for file_path in sorted(files, key=natural_sort_key):
+                file_item = QTreeWidgetItem(parent_item)
+                file_item.setData(0, Qt.ItemDataRole.UserRole, file_path)
+                
+                file_widget = FileItemWidget(file_path, is_folder=False)
+                file_widget.remove_requested.connect(self.file_remove_requested.emit)
+                
+                parent_item.addChild(file_item)
+                self._attach_item_widget(file_item, 0, file_widget)
+
+            for subdir in sorted(subdirs, key=natural_sort_key):
+                subdir_item = QTreeWidgetItem(parent_item)
+                subdir_item.setData(0, Qt.ItemDataRole.UserRole, subdir)
+                
+                subdir_widget = FileItemWidget(subdir, is_folder=True)
+                subdir_widget.remove_requested.connect(self.file_remove_requested.emit)
+                
+                parent_item.addChild(subdir_item)
+                self._attach_item_widget(subdir_item, 0, subdir_widget)
+                
+                # 保存子文件夹节点
+                self.folder_nodes[subdir] = subdir_item
+                
+                # 递归处理子文件夹
+                self._populate_folder_tree(subdir_item, subdir)
+                
+                # 更新子文件夹的文件数量显示
+                file_count = self._count_files_recursive(subdir)
+                subdir_widget.update_file_count(file_count)
+                
+        except Exception as e:
+            print(f"Error populating folder tree for {folder_path}: {e}")
+        
+        # 触发重绘以隐藏占位提示
+        self.viewport().update()
+
+    def _add_folder(self, folder_path: str):
+        """添加文件夹及其包含的所有图片文件"""
+        if folder_path in self.folder_nodes:
+            return  # 文件夹已存在
+        
+        # 创建文件夹节点
+        folder_item = QTreeWidgetItem()
+        folder_item.setData(0, Qt.ItemDataRole.UserRole, folder_path)
+        
+        # 创建文件夹项的自定义控件
+        folder_widget = FileItemWidget(folder_path, is_folder=True)
+        folder_widget.remove_requested.connect(self.file_remove_requested.emit)
+        
+        self._insert_top_level_item(folder_item, is_folder=True)
+        self._attach_item_widget(folder_item, 0, folder_widget)
+        
+        # 保存文件夹节点
+        self.folder_nodes[folder_path] = folder_item
+        
+        # 添加文件夹中的文件
+        try:
+            image_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.webp', '.avif', '.heic', '.heif'}
+            archive_extensions = {'.pdf', '.epub', '.cbz', '.cbr', '.zip'}
+            all_extensions = image_extensions | archive_extensions
+            files = [
+                os.path.join(folder_path, f)
+                for f in os.listdir(folder_path)
+                if os.path.splitext(f)[1].lower() in all_extensions
+            ]
+            
+            for file_path in sorted(files, key=natural_sort_key):
+                self._add_file_to_folder(file_path, folder_item)
+            
+            # 更新文件夹显示的文件数
+            self._update_folder_count(folder_item)
+        except Exception as e:
+            print(f"Error loading files from folder {folder_path}: {e}")
+    
+    def _add_folder_group(self, folder_path: str, files: List[str]):
+        """添加文件夹分组（使用提供的文件列表）"""
+        if folder_path in self.folder_nodes:
+            # 文件夹已存在，添加新文件
+            folder_item = self.folder_nodes[folder_path]
+            existing_files = set()
+            for i in range(folder_item.childCount()):
+                child = folder_item.child(i)
+                existing_files.add(child.data(0, Qt.ItemDataRole.UserRole))
+            
+            for file_path in files:
+                if file_path not in existing_files:
+                    self._add_file_to_folder(file_path, folder_item)
+            
+            # 更新文件夹显示的文件数
+            self._update_folder_count(folder_item)
+            return
+        
+        # 创建文件夹节点
+        folder_item = QTreeWidgetItem()
+        folder_item.setData(0, Qt.ItemDataRole.UserRole, folder_path)
+        
+        # 创建文件夹项的自定义控件
+        folder_widget = FileItemWidget(folder_path, is_folder=True)
+        folder_widget.remove_requested.connect(self.file_remove_requested.emit)
+        
+        self._insert_top_level_item(folder_item, is_folder=True)
+        self._attach_item_widget(folder_item, 0, folder_widget)
+        
+        # 保存文件夹节点
+        self.folder_nodes[folder_path] = folder_item
+        
+        # 添加文件列表
+        for file_path in sorted(files, key=natural_sort_key):
+            self._add_file_to_folder(file_path, folder_item)
+        
+        # 更新文件夹显示的文件数
+        self._update_folder_count(folder_item)
+
+    def _add_file_to_folder(self, file_path: str, parent_item: QTreeWidgetItem):
+        """将文件添加到文件夹节点下"""
+        file_item = QTreeWidgetItem(parent_item)
+        file_item.setData(0, Qt.ItemDataRole.UserRole, file_path)
+        
+        file_widget = FileItemWidget(file_path, is_folder=False)
+        file_widget.remove_requested.connect(self.file_remove_requested.emit)
+        
+        parent_item.addChild(file_item)
+        self._attach_item_widget(file_item, 0, file_widget)
+
+    def _add_single_file(self, file_path: str):
+        """添加单个文件（不属于任何文件夹）"""
+        # 检查文件是否已存在
+        for i in range(self.topLevelItemCount()):
+            item = self.topLevelItem(i)
+            if item.data(0, Qt.ItemDataRole.UserRole) == file_path:
+                return  # 文件已存在
+        
+        file_item = QTreeWidgetItem()
+        file_item.setData(0, Qt.ItemDataRole.UserRole, file_path)
+        
+        file_widget = FileItemWidget(file_path, is_folder=False)
+        file_widget.remove_requested.connect(self.file_remove_requested.emit)
+        
+        self._insert_top_level_item(file_item, is_folder=False)
+        self._attach_item_widget(file_item, 0, file_widget)
+
+    def remove_file(self, file_path: str):
+        """移除指定文件或文件夹"""
+        norm_path = os.path.normpath(file_path)
+        
+        # 临时断开选择信号，避免删除时触发选择事件
+        try:
+            self.itemSelectionChanged.disconnect(self._on_selection_changed)
+        except Exception:
+            pass
+        
+        try:
+            # 递归查找并移除项
+            def find_and_remove_item(parent_item: Optional[QTreeWidgetItem] = None) -> tuple[bool, Optional[QTreeWidgetItem]]:
+                if parent_item is None:
+                    # 搜索顶层项
+                    for i in range(self.topLevelItemCount()):
+                        item = self.topLevelItem(i)
+                        item_path = item.data(0, Qt.ItemDataRole.UserRole)
+                        
+                        if item_path == norm_path:
+                            # 找到了，删除这个顶层项
+                            self.takeTopLevelItem(i)
+                            # 如果是文件夹，从folder_nodes中移除
+                            if norm_path in self.folder_nodes:
+                                del self.folder_nodes[norm_path]
+                            # 递归删除所有子文件夹的引用
+                            self._remove_folder_nodes_recursive(item)
+                            return True, None
+                        
+                        # 递归搜索子项
+                        result, parent = find_and_remove_item(item)
+                        if result:
+                            return True, parent
+                    
+                    return False, None
+                else:
+                    # 搜索子项
+                    for i in range(parent_item.childCount()):
+                        child = parent_item.child(i)
+                        child_path = child.data(0, Qt.ItemDataRole.UserRole)
+                        
+                        if child_path == norm_path:
+                            # 找到了，删除这个子项
+                            parent_item.removeChild(child)
+                            # 如果是文件夹，从folder_nodes中移除
+                            if norm_path in self.folder_nodes:
+                                del self.folder_nodes[norm_path]
+                            # 递归删除所有子文件夹的引用
+                            self._remove_folder_nodes_recursive(child)
+                            # 递归向上更新所有父文件夹的文件数量
+                            self._update_all_parent_counts(parent_item)
+                            return True, parent_item
+                        
+                        # 递归搜索更深层的子项
+                        result, parent = find_and_remove_item(child)
+                        if result:
+                            return True, parent
+                    
+                    return False, None
+            
+            find_and_remove_item()
+            
+            # 删除后清除选择状态，避免自动触发加载
+            self.clearSelection()
+            
+        finally:
+            # 重新连接选择信号
+            try:
+                self.itemSelectionChanged.connect(self._on_selection_changed)
+            except Exception:
+                pass
+    
+    def _remove_folder_nodes_recursive(self, item: QTreeWidgetItem):
+        """递归移除文件夹节点的所有子文件夹引用"""
+        for i in range(item.childCount()):
+            child = item.child(i)
+            child_path = child.data(0, Qt.ItemDataRole.UserRole)
+            if child_path in self.folder_nodes:
+                del self.folder_nodes[child_path]
+            # 递归处理子项
+            self._remove_folder_nodes_recursive(child)
+
+    def _update_folder_count(self, folder_item: QTreeWidgetItem) -> bool:
+        """
+        更新文件夹显示的文件数量（递归统计）
+        返回: True 如果文件夹被删除，False 否则
+        """
+        if folder_item:
+            widget = self.itemWidget(folder_item, 0)
+            if isinstance(widget, FileItemWidget) and widget.is_folder:
+                # 递归统计所有文件数量
+                count = self._count_files_in_tree(folder_item)
+                folder_path = folder_item.data(0, Qt.ItemDataRole.UserRole)
+                
+                # 如果文件夹为空（计数为0），删除该文件夹节点
+                if count == 0:
+                    # 从 folder_nodes 中移除
+                    if folder_path in self.folder_nodes:
+                        del self.folder_nodes[folder_path]
+                    
+                    # 从树中移除
+                    parent = folder_item.parent()
+                    if parent:
+                        parent.removeChild(folder_item)
+                    else:
+                        # 顶层项
+                        index = self.indexOfTopLevelItem(folder_item)
+                        if index >= 0:
+                            self.takeTopLevelItem(index)
+                    return True
+                else:
+                    widget.update_file_count(count)
+        return False
+    
+    def _update_all_parent_counts(self, item: QTreeWidgetItem):
+        """递归向上更新所有父文件夹的文件数量，如果文件夹为空则删除"""
+        current = item
+        while current:
+            parent = current.parent()  # 先保存父节点，因为 current 可能被删除
+            was_deleted = self._update_folder_count(current)
+            if was_deleted:
+                # 如果当前文件夹被删除了，继续检查父文件夹
+                current = parent
+            else:
+                # 如果没被删除，继续向上更新
+                current = parent
+    
+    def _count_files_in_tree(self, tree_item: QTreeWidgetItem) -> int:
+        """递归统计树节点中的文件数量"""
+        count = 0
+        for i in range(tree_item.childCount()):
+            child = tree_item.child(i)
+            child_path = child.data(0, Qt.ItemDataRole.UserRole)
+            if child_path and os.path.isfile(child_path):
+                count += 1
+            elif child_path and os.path.isdir(child_path):
+                # 递归统计子文件夹
+                count += self._count_files_in_tree(child)
+        return count
+
+    def clear(self, clear_cache: bool = False):
+        """
+        清空所有项
+        
+        Args:
+            clear_cache: 是否同时清空缩略图缓存（默认 False，保留缓存以便重用）
+        """
+        super().clear()
+        self.folder_nodes.clear()
+        self._auto_expand_after_empty = False
+        
+        if clear_cache:
+            FileItemWidget.clear_thumbnail_cache()
+        
+        # 触发重绘以显示占位提示
+        self.viewport().update()
+
+    # 拖放事件处理
+    def dragEnterEvent(self, event):
+        """拖入事件：检查是否包含文件"""
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        """拖动移动事件"""
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        """放下事件：处理拖入的文件和文件夹"""
+        if event.mimeData().hasUrls():
+            paths = []
+            for url in event.mimeData().urls():
+                path = url.toLocalFile()
+                if path:
+                    paths.append(path)
+            
+            if paths:
+                # 发射信号，让业务逻辑层处理
+                self.files_dropped.emit(paths)
+            
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def select_file_by_path(self, file_path: str):
+        """
+        주어진 경로에 해당하는 항목을 선택 상태로 맞춘다 (하이라이트만 이동).
+
+        메인 파일 리스트에서 특정 페이지로 바로 진입했을 때처럼, 캔버스에는
+        이미지가 로드되었지만 에디터의 file_list selection이 그 이미지를
+        가리키고 있지 않은 경우를 동기화하기 위해 사용한다. 이렇게 해야
+        A/D(이전/다음) 단축키가 selection 기준으로 올바른 현재 페이지부터
+        이동한다.
+
+        이미 로드된 이미지를 다시 로드하지 않도록, selection 변경 시그널은
+        잠깐 끊고 setCurrentItem을 호출한다.
+        """
+        if not file_path:
+            return
+
+        norm_target = os.path.normcase(os.path.normpath(file_path))
+
+        from PyQt6.QtWidgets import QTreeWidgetItemIterator
+        iterator = QTreeWidgetItemIterator(self)
+        match_item = None
+        while iterator.value():
+            item = iterator.value()
+            item_path = item.data(0, Qt.ItemDataRole.UserRole)
+            if item_path and os.path.normcase(os.path.normpath(item_path)) == norm_target:
+                match_item = item
+                break
+            iterator += 1
+
+        if match_item is None:
+            return
+
+        # 이미 선택되어 있으면 굳이 재선택할 필요 없음
+        current_items = self.selectedItems()
+        if current_items and current_items[0] is match_item:
+            return
+
+        try:
+            self.itemSelectionChanged.disconnect(self._on_selection_changed)
+        except Exception:
+            pass
+
+        try:
+            self.setCurrentItem(match_item)
+            self.scrollToItem(match_item)
+        finally:
+            try:
+                self.itemSelectionChanged.connect(self._on_selection_changed)
+            except Exception:
+                pass
+
+    def select_next_image(self):
+        """Select the next image in the list, skipping folders."""
+        current_items = self.selectedItems()
+        next_item = None
+        
+        if not current_items:
+            # If nothing selected, find first file
+            from PyQt6.QtWidgets import QTreeWidgetItemIterator
+            iterator = QTreeWidgetItemIterator(self)
+            while iterator.value():
+                item = iterator.value()
+                file_path = item.data(0, Qt.ItemDataRole.UserRole)
+                if file_path and os.path.isfile(file_path):
+                    self.setCurrentItem(item)
+                    return
+                iterator += 1
+            return
+            
+        current = current_items[0]
+        next_item = self.itemBelow(current)
+        while next_item:
+            file_path = next_item.data(0, Qt.ItemDataRole.UserRole)
+            if file_path and os.path.isfile(file_path):
+                self.setCurrentItem(next_item)
+                return
+            next_item = self.itemBelow(next_item)
+
+    def select_prev_image(self):
+        """Select the previous image in the list, skipping folders."""
+        current_items = self.selectedItems()
+        if not current_items:
+            return
+            
+        current = current_items[0]
+        prev_item = self.itemAbove(current)
+        while prev_item:
+            file_path = prev_item.data(0, Qt.ItemDataRole.UserRole)
+            if file_path and os.path.isfile(file_path):
+                self.setCurrentItem(prev_item)
+                return
+            prev_item = self.itemAbove(prev_item)
+
+    def select_image_by_step(self, step: int):
+        """
+        step만큼 이미지를 이동해서 선택 (양수: 다음, 음수: 이전).
+        select_next_image/select_prev_image와 달리 중간 항목에서는
+        setCurrentItem을 호출하지 않고, 최종 목적지에서 딱 한 번만 호출한다.
+        (Shift+A/D로 10페이지씩 넘길 때 중간 이미지들이 전부 로딩되는 것을 방지)
+        범위를 벗어나면 마지막/첫 이미지에서 멈춘다 (오버플로우 없음).
+        """
+        current_items = self.selectedItems()
+        if not current_items or step == 0:
+            return
+
+        current = current_items[0]
+        target_item = current
+        remaining = abs(step)
+        move = self.itemBelow if step > 0 else self.itemAbove
+
+        while remaining > 0:
+            next_item = move(target_item)
+            if next_item is None:
+                break
+            file_path = next_item.data(0, Qt.ItemDataRole.UserRole)
+            if file_path and os.path.isfile(file_path):
+                target_item = next_item
+                remaining -= 1
+            else:
+                # 폴더 항목은 이동 칸수에 포함하지 않고 계속 진행
+                target_item = next_item
+
+        if target_item is not current:
+            self.setCurrentItem(target_item)

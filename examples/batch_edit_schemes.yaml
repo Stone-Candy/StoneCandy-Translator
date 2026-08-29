@@ -1,0 +1,12 @@
+schemes:
+- name: 텍스트 치환
+  enabled: true
+  comment: ''
+  match:
+    logic: all
+    conditions: []
+  actions:
+  - type: replace_text
+    pattern: cat
+    regex: false
+    replace: dog

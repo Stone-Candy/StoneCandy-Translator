@@ -1,0 +1,134 @@
+# Manga Translator Docker Image
+# 支持 CPU 和 GPU 版本
+
+ARG CUDA_VERSION=12.1.0
+ARG PYTHON_VERSION=3.12
+ARG BUILD_TYPE=cpu
+
+# ===== CPU 版本 =====
+FROM python:${PYTHON_VERSION}-slim AS base-cpu
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    curl \
+    build-essential \
+    g++ \
+    libeigen3-dev \
+    libdbus-1-3 \
+    libegl1 \
+    libfontconfig1 \
+    libgl1 \
+    libglib2.0-0 \
+    libopengl0 \
+    libsm6 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxext6 \
+    libxkbcommon0 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ===== GPU 版本 =====
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn8-runtime-ubuntu22.04 AS base-gpu
+
+# 设置非交互式安装
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Shanghai
+
+# 安装 Python 3.12
+RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y \
+    python3.12 \
+    python3.12-dev \
+    python3.12-venv \
+    git \
+    wget \
+    curl \
+    build-essential \
+    g++ \
+    libeigen3-dev \
+    libdbus-1-3 \
+    libegl1 \
+    libfontconfig1 \
+    libgl1 \
+    libglib2.0-0 \
+    libopengl0 \
+    libsm6 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxext6 \
+    libxkbcommon0 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 设置 Python 3.12 为默认
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1 \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+
+# 升级 pip
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
+
+# ===== 选择基础镜像 =====
+FROM base-${BUILD_TYPE} AS base
+
+# 设置工作目录
+WORKDIR /app
+
+# 复制项目文件
+COPY . /app/
+
+# 安装 Python 依赖
+ARG BUILD_TYPE=cpu
+RUN if [ "$BUILD_TYPE" = "gpu" ]; then \
+        # GPU 版本：从源码编译 pydensecrf
+        echo "Building pydensecrf from source for GPU" && \
+        pip install --no-cache-dir setuptools wheel && \
+        pip install --no-cache-dir Cython numpy && \
+        pip install --no-cache-dir --verbose git+https://github.com/lucasb-eyer/pydensecrf.git && \
+        grep -v "^pydensecrf" requirements_gpu.txt > /tmp/requirements_gpu_no_pydensecrf.txt && \
+        pip install --no-cache-dir -r /tmp/requirements_gpu_no_pydensecrf.txt; \
+    else \
+        # CPU 版本：从源码编译 pydensecrf
+        echo "Building pydensecrf from source for CPU" && \
+        pip install --no-cache-dir setuptools wheel && \
+        pip install --no-cache-dir Cython numpy && \
+        pip install --no-cache-dir --verbose git+https://github.com/lucasb-eyer/pydensecrf.git && \
+        grep -v "^pydensecrf" requirements_cpu.txt > /tmp/requirements_cpu_no_pydensecrf.txt && \
+        pip install --no-cache-dir -r /tmp/requirements_cpu_no_pydensecrf.txt; \
+    fi
+
+# 创建必要的目录（不覆盖已存在的目录）
+RUN mkdir -p /app/result /app/models /app/logs
+
+# 备份默认数据以便在挂载空卷时恢复
+RUN cp -r /app/examples /app/default_examples && \
+    cp -r /app/fonts /app/default_fonts && \
+    cp -r /app/dict /app/default_dict && \
+    cp -r /app/manga_translator/server/data /app/default_server_data
+
+# 设置环境变量
+ENV PYTHONUNBUFFERED=1
+ENV MANGA_TRANSLATOR_WEB_SERVER=true
+ENV QT_QPA_PLATFORM=offscreen
+
+# 暴露端口
+EXPOSE 8000
+
+# 复制并设置 entrypoint
+RUN chmod +x /app/packaging/docker-entrypoint.sh
+ENTRYPOINT ["/app/packaging/docker-entrypoint.sh"]
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/ || exit 1
+
+# 启动命令
+CMD ["python", "-m", "manga_translator", "web", "--host", "0.0.0.0", "--port", "8000"]
