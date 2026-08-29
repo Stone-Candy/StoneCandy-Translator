@@ -1,6 +1,7 @@
 <div align="center">
 
 <img src="doc/images/miku_on_desk.png" width="500" alt="메인 화면">
+
 [![기반](https://img.shields.io/badge/%EA%B8%B0%EB%B0%98-manga--translator--ui-green)](https://github.com/hgmzhn/manga-translator-ui)
 [![기반](https://img.shields.io/badge/%EA%B8%B0%EB%B0%98-manga--image--translator-green)](https://github.com/zyddnys/manga-image-translator)
 [![모델](https://img.shields.io/badge/%EB%AA%A8%EB%8D%B8-Real--CUGAN-orange)](https://github.com/bilibili/ailab)
