@@ -19,5 +19,5 @@
 
  ### StoneCandy
 
-<img title="" src="doc/images/PPL100.png" height=40> 
+<img title="" src="doc/images/PPL100.png" height=35> 
 </div>
