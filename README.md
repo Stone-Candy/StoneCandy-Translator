@@ -14,6 +14,4 @@
 [![라이선스](https://img.shields.io/badge/%EB%9D%BC%EC%9D%B4%EC%84%A0%EC%8A%A4-GPL--3.0-red)](LICENSE.txt)
 </div>
 
-**Pixiv id : |**
-
 
