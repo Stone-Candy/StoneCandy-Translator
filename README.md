@@ -19,5 +19,5 @@
 
  ### StoneCandy
 
-<img title="" src="doc/images/PPL24.png"> 
+<img title="" src="doc/images/PPL100.png"> 
 </div>
