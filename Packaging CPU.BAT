@@ -1,1 +1,0 @@
-.\Miniconda3\envs\manga-env\python.exe packaging\build_packages.py 0.6 --build cpu
