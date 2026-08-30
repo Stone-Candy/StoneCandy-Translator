@@ -19,7 +19,7 @@
 
  <H3>StoneCandy</H3>
 
-<img title="" src="doc/images/PPL100.png" height=35> 
+<img title="" src="doc/images/PPL100.png" height=32> 
 <br><br>
 소스코드가 아직 정리되지 않았습니다. 반드시 Release 버전을 이용해 주세요
 
