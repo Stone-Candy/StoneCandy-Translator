@@ -35,7 +35,6 @@
 <img title="" src="doc/images/tr_01.png"> 
 <img title="" src="doc/images/tr_02.png"> 
 <div align="center"> 
- 
-**API 사용시 편집 전까지 전 과정 자동으로 진행됩니다.**
+<strong>▲ 위의 그림은 TXT모드 사용 예시이며, API 사용시 편집 전까지 전 과정 자동으로 진행됩니다.</strong>
 </div>
 <img title="" src="doc/images/tr_03.png"> 
