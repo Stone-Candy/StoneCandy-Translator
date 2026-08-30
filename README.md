@@ -34,3 +34,7 @@
 
 <img title="" src="doc/images/tr_01.png"> 
 <img title="" src="doc/images/tr_02.png"> 
+<div align="center"> 
+ 
+**API 번역은 편집 전까지 전 과정 자동으로 진행됩니다.**
+</div>
