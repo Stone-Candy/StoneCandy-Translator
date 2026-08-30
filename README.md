@@ -17,12 +17,13 @@
 
 속도와, 편의성, 접근성을 모두 극대화하고자 조정된 만화 번역기입니다. 가장 큰 장벽인 API 없이도 번역을 진행할 수 있는 TXT 모드가 마련되어 있고, 한글 배치에 최적화된 알고리즘을 제공하며, 클릭 몇 번으로 출판급 퀄리티에 가까운 결과물을 낼 수 있도록 UI가 마련되어 있습니다. 또한 여러 가지 편의기능이 마련되어 있습니다. <div align="center">
 
- ### StoneCandy
+ <H3>StoneCandy</H3>
 
 <img title="" src="doc/images/PPL100.png" height=35> 
 <br><br>
 소스코드가 아직 정리되지 않았습니다. 반드시 Release 버전을 이용해 주세요
 
-**[Release Page](https://github.com/Stone-Candy/StoneCandy-Translator/releases)**
+**[StoneCandy-Translator 0.8 Release](https://github.com/Stone-Candy/StoneCandy-Translator/releases)**
+
 </div>
 
