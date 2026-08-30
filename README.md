@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="doc/images/miku_on_desk.png" width="500" alt="메인 화면">
+<img title="" src="doc/images/miku_splash.png" alt="메인 화면" width="350">
 
 [![기반](https://img.shields.io/badge/%EA%B8%B0%EB%B0%98-manga--translator--ui-green)](https://github.com/hgmzhn/manga-translator-ui)
 [![기반](https://img.shields.io/badge/%EA%B8%B0%EB%B0%98-manga--image--translator-green)](https://github.com/zyddnys/manga-image-translator)
@@ -14,6 +14,6 @@
 [![라이선스](https://img.shields.io/badge/%EB%9D%BC%EC%9D%B4%EC%84%A0%EC%8A%A4-GPL--3.0-red)](LICENSE.txt)
 </div>
 
-**Pixiv id : | **
+**Pixiv id : |**
 
 
