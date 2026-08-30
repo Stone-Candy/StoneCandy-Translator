@@ -32,4 +32,4 @@
 
 ## 🖼️ Showcase
 
-<img title="" src="doc/images/trJP.png" width=500> <img title="" src="doc/images/trKR.png" width=500>
+<img title="" src="doc/images/trJP.png" width=1000> <img title="" src="doc/images/trKR.png" width=500>
