@@ -25,6 +25,7 @@
 
 **[StoneCandy-Translator 0.8 Release](https://github.com/Stone-Candy/StoneCandy-Translator/releases)**
 <br>
+<br>
 
 </div>
 
