@@ -93,7 +93,7 @@
 <br><br>
 <div align="center">
  
-### StoneCandy
+## StoneCandy
 
 <img title="" src="doc/images/PPL100.png" height=35> 
 </div>
