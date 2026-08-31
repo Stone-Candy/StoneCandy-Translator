@@ -7,6 +7,7 @@
 [![모델](https://img.shields.io/badge/%EB%AA%A8%EB%8D%B8-MangaJaNai-orange)](https://github.com/the-database/MangaJaNai)
 [![모델](https://img.shields.io/badge/%EB%AA%A8%EB%8D%B8-YSG-orange)](https://github.com/lhj5426/YSG)
 [![모델](https://img.shields.io/badge/Model-MangaLens%20Bubble%20Segmentation-orange?logo=huggingface)](https://huggingface.co/huyvux3005/manga109-segmentation-bubble)
+[![OCR](https://img.shields.io/badge/OCR-HayaiOCR-blue)](https://github.com/NopeNopeGuy/hayai-ocr)
 [![OCR](https://img.shields.io/badge/OCR-PaddleOCR-blue)](https://github.com/PaddlePaddle/PaddleOCR)
 [![OCR](https://img.shields.io/badge/OCR-MangaOCR-blue)](https://github.com/kha-white/manga-ocr)
 [![OCR](https://img.shields.io/badge/OCR-PaddleOCR--VL--1.5-blue)](https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.5)
