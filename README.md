@@ -29,7 +29,7 @@
 <br><br>
 소스코드가 아직 정리되지 않았습니다. 반드시 Release 버전을 이용해 주세요
 
-**[StoneCandy-Translator 0.9 Release](https://github.com/Stone-Candy/StoneCandy-Translator/releases)**
+**[StoneCandy-Translator 0.95 Release](https://github.com/Stone-Candy/StoneCandy-Translator/releases)**
 <br>
 <br>
 
