@@ -43,9 +43,14 @@
 <img title="" src="doc/images/sample_02.png"> 
 <div align="center">
 <strong>▲ 위의 그림은 TXT모드 사용 예시이며, 번역 API 사용시 편집 전까지 모든 과정이 자동으로 진행됩니다.</strong>
-</div>
+
 <br>
+<img title="" src="doc/images/tip_02.gif">
+<br>
+<strong>▲ 편리한 자동 줄바꿈 조절 기능과 세로쓰기 전환 기능.</strong>
+<br><br>
 <img title="" src="doc/images/tr_03.png"> 
+</div>
 
 <br><br>
 
