@@ -47,7 +47,7 @@
 <br>
 <img title="" src="doc/images/tip_02.gif">
 <br>
-<strong>▲ 편리한 자동 줄바꿈 조절 기능(Ctrl+드래그)과 세로쓰기 전환 기능(X)</strong>
+<strong>▲ 자동 줄바꿈 조절 기능(Ctrl+드래그)과 세로쓰기 전환 기능(X)</strong>
 <br><br>
 <img title="" src="doc/images/tr_03.jpg">
 <strong>▲ 한글 재식자 기능 (NovelAI 모드:프롬프트 자동 보존)</strong>
