@@ -13,7 +13,7 @@ StoneCandy Translator의 **다운로드와 매뉴얼은 이제 허깅페이스�
 
 ## ⬇️ 새 다운로드 주소로 이동
 
-[huggingface.co/spaces/StoneCandy/StoneCandy-Translator](https://huggingface.co/spaces/StoneCandy/StoneCandy-Translator) <a href="https://huggingface.co/spaces/StoneCandy/StoneCandy-Translator"><img src="https://img.shields.io/badge/%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0-Hugging%20Face-FF9FB9?style=for-the-badge&logo=huggingface&logoColor=white" alt="공식 배포 페이지" height="48" align="absmiddle"></a>
+[huggingface.co/spaces/StoneCandy/StoneCandy-Translator](https://huggingface.co/spaces/StoneCandy/StoneCandy-Translator) <br><br><a href="https://huggingface.co/spaces/StoneCandy/StoneCandy-Translator"><img src="https://img.shields.io/badge/%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0-Hugging%20Face-FF9FB9?style=for-the-badge&logo=huggingface&logoColor=white" alt="공식 배포 페이지" height="48" align="absmiddle"></a>
 
 </div>
 
