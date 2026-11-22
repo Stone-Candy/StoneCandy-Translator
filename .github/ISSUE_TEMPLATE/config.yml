@@ -1,8 +1,0 @@
-blank_issues_enabled: false
-contact_links:
-  - name: 使用与排查文档 / Documentation & Troubleshooting
-    url: https://github.com/hgmzhn/manga-translator-ui/blob/main/README.md
-    about: 提交前可先查看项目文档与常见问题 / Read the project documentation and FAQs before opening an issue
-  - name: 先搜索重复 Issue / Search Existing Issues
-    url: https://github.com/hgmzhn/manga-translator-ui/issues?q=is%3Aissue
-    about: 提交前先搜索关键词，确认没有重复 Issue / Search first to avoid duplicates
